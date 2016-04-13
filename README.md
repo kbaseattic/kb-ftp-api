@@ -1,5 +1,5 @@
 
-# KBase FTP API REST (under dev)
+# KBase FTP API (under dev)
 
 This repo contains a REST-like API for accessing a user's FTP space.
 
