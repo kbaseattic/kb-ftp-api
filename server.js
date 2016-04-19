@@ -176,7 +176,6 @@ function AuthRequired(req, res, next) {
 
     when(validateToken(req.headers.Authorization),
         userObj => {
-            console.log('userObj')
             if (!(userObj && 'id' in userObj)) {
                 res.status(401).send( {error: 'Invalid token!'} );
                 return;
