@@ -10,9 +10,12 @@ var request         = require('request'),
     extend          = require('util')._extend,
     cliOptions 	    = require('commander'),
     fs              = require('fs'),
-    pathUtil        = require('path');
+    pathUtil        = require('path'),
+    execSync = require('child_process').execSync,
+    when = require("promised-io/promise").when;
 
-var execSync = require('child_process').execSync;
+var validateToken 	= require('./lib/validateToken.js');
+
 
 
 cliOptions.version('0.0.1')
@@ -20,7 +23,7 @@ cliOptions.version('0.0.1')
            .parse(process.argv);
 
 
-// if --dev option is used, set token to token in file "dev-user-token"
+// if --dev option is used, set token to token in file "./dev-user-token"
 // otherwise, pass on token, if there is one
 if (cliOptions.dev) {
     var token = fs.readFileSync('dev-user-token', 'utf8').trim();
@@ -75,6 +78,7 @@ app.use( (req, res, next) => {
  *     ]
  */
 app.get('/v0/list/*', AuthRequired, (req, res) => {
+    console.log('req.user.id', req.user.id)
     const opts = req.query;
 
     const path = '/'+req.params[0],
@@ -113,6 +117,40 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
 
 
 /**
+ * @api {get} /quota get spaced used and total allowed for user (not in use!)
+ * @apiName quota
+ *
+ *
+ * @apiSampleRequest /quota/
+ *
+ * @apiSuccess {json} meta give used/available space for user
+ * @apiSuccessExample {json} Success-Response:
+ *     HTTP/1.1 200 OK
+ *     {
+ *        used: used,
+ *        available: 1000000
+ *     }
+ */
+/*
+.get('/v0/quota', AuthRequired, (req, res) => {
+    const opts = req.query;
+    const userDir = '/Users/nc/';
+
+    let str = execSync("du -s "+userDir).toString(),
+        e = str.indexOf('\t');
+    let used = parseInt(str.slice(0, e));
+
+    let quota = {
+        used: used,
+        available: 1000000
+    }
+
+    res.send(quota);
+})
+*/
+
+
+/**
  * @api {get} /test-service/  Way to test simple, unauthenticated GET request.
  *  Note: no version "v0", "v1", etc, in the endpoint.
  *
@@ -131,12 +169,25 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
 
 
 function AuthRequired(req, res, next) {
-    if ('Authorization' in req.headers) {
-        req.header = {"Authorization": req.headers.Authorization};
-        next();
-    } else {
+    // if no token at all, return 401
+    if (!('Authorization' in req.headers)) {
         res.status(401).send( {error: 'Auth is required!'} );
     }
+
+    when(validateToken(req.headers.Authorization),
+        userObj => {
+            console.log('userObj')
+            if (!(userObj && 'id' in userObj)) {
+                res.status(401).send( {error: 'Invalid token!'} );
+                return;
+            }
+
+            // Pass user id along
+            req.user = userObj;
+
+            // safe to move along.
+            next();
+        })
 }
 
 
