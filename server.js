@@ -11,8 +11,8 @@ var request         = require('request'),
     cliOptions 	    = require('commander'),
     fs              = require('fs'),
     pathUtil        = require('path'),
-    execSync = require('child_process').execSync,
-    when = require("promised-io/promise").when;
+    execSync        = require('child_process').execSync,
+    when            = require("promised-io/promise").when;
 
 var validateToken 	= require('./lib/validateToken.js');
 
@@ -82,7 +82,7 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
     const opts = req.query;
 
     const path = '/'+req.params[0],
-          rootDir = '/Users/nc',
+          rootDir = '/data/bulktest/data/bulktest/'+req.user.id,
           fullPath = rootDir+path;
 
     let files = [];
