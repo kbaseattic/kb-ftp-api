@@ -82,7 +82,7 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
     const opts = req.query;
 
     const path = '/'+req.params[0],
-          rootDir = '/data/bulktest/data/bulktest/'+req.user.id,
+          rootDir = '/data/bulktest/data/bulktest/',
           fullPath = rootDir+path;
 
     let files = [];
@@ -170,11 +170,11 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
 
 function AuthRequired(req, res, next) {
     // if no token at all, return 401
-    if (!('Authorization' in req.headers)) {
+    if (!('authorization' in req.headers)) {
         res.status(401).send( {error: 'Auth is required!'} );
     }
 
-    when(validateToken(req.headers.Authorization),
+    when(validateToken(req.headers.authorization),
         userObj => {
             if (!(userObj && 'id' in userObj)) {
                 res.status(401).send( {error: 'Invalid token!'} );
