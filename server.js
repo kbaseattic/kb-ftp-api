@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 
+// application config
+var config = require('./config.json');
+
 var app         = require('express')(),
     http        = require('http').Server(app),
     cors        = require('cors'),
@@ -26,7 +29,7 @@ cliOptions.version('0.0.1')
 // if --dev option is used, set token to token in file "./dev-user-token"
 // otherwise, pass on token, if there is one
 if (cliOptions.dev) {
-    var token = fs.readFileSync('dev-user-token', 'utf8').trim();
+    let token = fs.readFileSync('dev-user-token', 'utf8').trim();
     console.log('\n\x1b[36m'+'using development token:'+'\x1b[0m', token, '\n')
 
     app.all('/', (req, res, next) => {
@@ -37,7 +40,6 @@ if (cliOptions.dev) {
         next();
     })
 }
-
 
 // Configure CORs and body parser.
 app.use( cors() )
@@ -81,8 +83,8 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
     console.log('req.user.id', req.user.id)
     const opts = req.query;
 
-    const path = '/'+req.params[0],
-          rootDir = '/data/bulktest/data/bulktest/',
+    const rootDir = config.ftpRoot,
+          path = '/'+req.params[0],
           fullPath = rootDir+path;
 
     let files = [];
