@@ -4,3 +4,7 @@ dev-user-token
 api-documentation.json
 node_modules/
 forever.log
+nohup.out
+npm-debug.log
+*~
+\#*\#
