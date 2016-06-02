@@ -100,15 +100,14 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
             name: file,
             path: path+'/'+file,
             mtime: stats.mtime.getTime(),
-            size: stats.size,
-            nlink: stats.nlink - 2
+            size: stats.size
         }
 
         // additional info if is directory
         if (isDir) {
             fileObj.isFolder = true;
-            fileObj.folderCount = parseInt( execSync("find "+
-                filePath+" -maxdepth 1 -type d | wc -l").toString() ) - 1;
+            fileObj.folderCount = parseInt( execSync('find "' +
+                filePath+'" -maxdepth 1 -type d | wc -l').toString() ) - 1;
         }
 
         files.push(fileObj)
