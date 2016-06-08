@@ -8,3 +8,5 @@ nohup.out
 npm-debug.log
 *~
 \#*\#
+
+config.json
