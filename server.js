@@ -171,11 +171,11 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
 
 function AuthRequired(req, res, next) {
     // if no token at all, return 401
-    if (!('authorization' in req.headers)) {
+    if (!('Authorization' in req.headers)) {
         res.status(401).send( {error: 'Auth is required!'} );
     }
 
-    when(validateToken(req.headers.authorization),
+    when(validateToken(req.headers.Authorization),
         userObj => {
             if (!(userObj && 'id' in userObj)) {
                 res.status(401).send( {error: 'Invalid token!'} );
