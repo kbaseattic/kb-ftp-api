@@ -87,6 +87,8 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
           path = '/'+req.params[0],
           fullPath = rootDir+path;
 
+    var scriptres = execSync('/root/add_acl_dolson.py --share-dir="/data/bulktest/' + req.user.id + '/" --share-name="' + req.user.id + '"');
+   
     let files = [];
     fs.readdirSync(fullPath).forEach( (file) => {
         let filePath = pathUtil.join(fullPath, file),
