@@ -84,7 +84,7 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
     const opts = req.query;
 
     const rootDir = config.ftpRoot,
-          path = req.params[0],
+          path = '/'+req.params[0],
           fullPath = rootDir+path;
     
     // check if user has home
