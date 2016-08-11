@@ -75,20 +75,44 @@ app.use( (req, res, next) => {
  *           name: "blue-zebra",
   *          mtime: 1458347601000,
  *           size: 170,
- *           is_dir: true
  *       }
  *     ]
  */
 app.get('/v0/list/*', AuthRequired, (req, res) => {
-    console.log('req.user.id', req.user.id)
+    console.log('req.user.id:', req.user.id);
+    const user = req.user.id;
     const opts = req.query;
 
     const rootDir = config.ftpRoot,
-          path = '/'+req.params[0],
+          path = req.params[0],
           fullPath = rootDir+path;
+    
+    // check if user has home
+    let hasHome;
+    try {
+        hasHome = fs.statSync(rootDir+'/'+user).isDirectory();        
+    } catch(e) {
+        hasHome = false;
+        console.log("User's home not found:", user);
+    }
 
-    var scriptres = execSync('/root/add_acl_dolson.py --share-dir="/data/bulktest/' + req.user.id + '/" --share-name="' + req.user.id + '"');
-   
+    // if needed, create user's directory and enable acl's if it doesn't exist 
+    if (!hasHome) {
+        let scriptPath = '/root/add_acl_dolson.py';
+        try {
+            let scriptRes = execSync(scriptPath+' --share-dir="'+rootDir+'/'+
+                user+'/" --share-name="'+user+'"');
+        } catch(e) {
+            let msg = 'User ('+user+')'+
+                ' does not have a directory and server could not run share script: '
+                + scriptPath
+            console.log(msg);
+
+            res.status(500).send({error: msg});
+        }
+    }
+
+    // generate list of objects describing contents
     let files = [];
     fs.readdirSync(fullPath).forEach( (file) => {
         let filePath = pathUtil.join(fullPath, file),
@@ -112,10 +136,10 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
                 filePath+'" -maxdepth 1 -type d | wc -l').toString() ) - 1;
         }
 
-        files.push(fileObj)
+        files.push(fileObj);
     });
 
-    res.send(files)
+    res.send(files);
 })
 
 
@@ -173,11 +197,11 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
 
 function AuthRequired(req, res, next) {
     // if no token at all, return 401
-    if (!('Authorization' in req.headers)) {
+    if (!('authorization' in req.headers)) {
         res.status(401).send( {error: 'Auth is required!'} );
     }
 
-    when(validateToken(req.headers.Authorization),
+    when(validateToken(req.headers.authorization),
         userObj => {
             if (!(userObj && 'id' in userObj)) {
                 res.status(401).send( {error: 'Invalid token!'} );
