@@ -69,12 +69,12 @@ app.use( (req, res, next) => {
  *       {
  *           name: "blue-panda",
  *           mtime: 1459822597000,
- *           size: 476,
- *           is_dir: true
+ *           size: 476
  *       }, {
  *           name: "blue-zebra",
   *          mtime: 1458347601000,
  *           size: 170,
+ *           isFolder: true
  *       }
  *     ]
  */
@@ -132,8 +132,8 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
         // additional info if is directory
         if (isDir) {
             fileObj.isFolder = true;
-            fileObj.folderCount = parseInt( execSync('find "' +
-                filePath+'" -maxdepth 1 -type d | wc -l').toString() ) - 1;
+            //fileObj.folderCount = parseInt( execSync('find "' +
+            //    filePath+'" -maxdepth 1 -type d | wc -l').toString() ) - 1;
         }
 
         files.push(fileObj);
