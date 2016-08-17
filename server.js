@@ -95,7 +95,7 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
     // throw error if user doesn't have access
     if (user != requestedHome) {
         let msg = 'User ('+user+')'+
-                ' does have permission to access: '
+                ' does not have permission to access: '
                 + requestedPath
         res.status(403).send({error: msg});
         return;
