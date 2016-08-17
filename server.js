@@ -79,24 +79,40 @@ app.use( (req, res, next) => {
  *     ]
  */
 app.get('/v0/list/*', AuthRequired, (req, res) => {
-    console.log('req.user.id:', req.user.id);
-    const user = req.user.id;
-    const opts = req.query;
+    console.log('req.user.id:', req.user.id);    
+    const user = req.user.id,
+          opts = req.query;
+
+    const requestedPath = req.params[0];
+    let pathList = requestedPath.split('/').filter(s => { 
+        if (s !== '') return true;
+    })
+    const requestedHome = pathList.shift();
+
+    // replace user with authenticated user
+    const path = '/'+user+'/'+pathList.join('/');
+
+    // throw error if user doesn't have access
+    if (user != requestedHome) {
+        let msg = 'User ('+user+')'+
+                ' does have permission to access: '
+                + requestedPath
+        res.status(403).send({error: msg});
+        return;
+    }
 
     const rootDir = config.ftpRoot,
-          path = '/'+req.params[0],
           fullPath = rootDir+path;
-    
+
     // check if user has home
-    let hasHome;
+    let hasHome = false;
     try {
         hasHome = fs.statSync(rootDir+'/'+user).isDirectory();        
     } catch(e) {
-        hasHome = false;
         console.log("User's home not found:", user);
     }
 
-    // if needed, create user's directory and enable acl's if it doesn't exist 
+    // if needed, create user's directory and enable acl's
     if (!hasHome) {
         let scriptPath = '/root/add_acl_dolson.py';
         try {
@@ -109,6 +125,7 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
             console.log(msg);
 
             res.status(500).send({error: msg});
+            return;
         }
     }
 
