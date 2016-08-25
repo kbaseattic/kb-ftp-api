@@ -208,7 +208,8 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
             path: f.reqPath,
             size: f.size,
             encoding: f.encoding,
-            name: f.originalname
+            name: f.originalname,
+            mtime: Date.now()
         })
     })
 
