@@ -4,10 +4,12 @@
 // application config
 var config = require('./config.json');
 
-var app         = require('express')(),
-    http        = require('http').Server(app),
-    cors        = require('cors'),
-    bodyParser  = require('body-parser');
+var app             = require('express')(),
+    multer          = require('multer'),
+    //upload          = multer({ dest: 'uploads/' }),
+    http            = require('http').Server(app),
+    cors            = require('cors'),
+    bodyParser      = require('body-parser');
 
 var request         = require('request'),
     extend          = require('util')._extend,
@@ -27,7 +29,7 @@ cliOptions.version('0.0.1')
 
 
 // if --dev option is used, set token to token in file "./dev-user-token"
-// otherwise, pass on token, if there is one
+// otherwise, pass on token for all routes, if there is one
 if (cliOptions.dev) {
     let token = fs.readFileSync('dev-user-token', 'utf8').trim();
     console.log('\n\x1b[36m'+'using development token:'+'\x1b[0m', token, '\n')
@@ -40,6 +42,24 @@ if (cliOptions.dev) {
         next();
     })
 }
+
+// handle desination of uploads
+var storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+
+        // if multiple files, take path of first
+        let reqPath = req.body.userPath;
+        let path = reqPath instanceof Array ? reqPath[0] : reqPath;
+        let securedReq = securePath(req.user.id, path)
+        
+        file.reqPath = securedReq.path+file.originalname;
+
+        cb(null, config.ftpRoot+securedReq.path)        
+    },
+    filename: (req, file, cb) => {
+        cb(null, file.originalname)
+    }
+})
 
 // Configure CORs and body parser.
 app.use( cors() )
@@ -60,7 +80,7 @@ app.use( (req, res, next) => {
  * @apiParam {string} path path to directory
  * @apiParam {string} ?type=(folders|files) only fetch folders or files
  *
- * @apiSampleRequest /list/my/models/
+ * @apiSampleRequest /list/my/genomes/
  *
  * @apiSuccess {json} meta metadata for listed objects
  * @apiSuccessExample {json} Success-Response:
@@ -84,16 +104,10 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
           opts = req.query;
 
     const requestedPath = req.params[0];
-    let pathList = requestedPath.split('/').filter(s => { 
-        if (s !== '') return true;
-    })
-    const requestedHome = pathList.shift();
-
-    // replace user with authenticated user
-    const path = '/'+user+'/'+pathList.join('/');
+    const securedReq = securePath(user, requestedPath);
 
     // throw error if user doesn't have access
-    if (user != requestedHome) {
+    if (user != securedReq.requestedHome) {
         let msg = 'User ('+user+')'+
                 ' does not have permission to access: '
                 + requestedPath
@@ -102,6 +116,7 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
     }
 
     const rootDir = config.ftpRoot,
+          path = securedReq.path,
           fullPath = rootDir+path;
 
     // check if user has home
@@ -122,8 +137,8 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
             let msg = 'User ('+user+')'+
                 ' does not have a directory and server could not run share script: '
                 + scriptPath
-            console.log(msg);
 
+            console.log(msg);
             res.status(500).send({error: msg});
             return;
         }
@@ -141,7 +156,7 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
 
         let fileObj = {
             name: file,
-            path: path+'/'+file,
+            path: path+file,
             mtime: stats.mtime.getTime(),
             size: stats.size
         }
@@ -161,37 +176,48 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
 
 
 /**
- * @api {get} /quota get spaced used and total allowed for user (not in use!)
- * @apiName quota
+ * @api {get} /upload post endpoint to upload data
+ * @apiName upload
  *
+ * @apiSampleRequest /upload/
  *
- * @apiSampleRequest /quota/
- *
- * @apiSuccess {json} meta give used/available space for user
+ * @apiSuccess {json} meta meta on data uploaded
  * @apiSuccessExample {json} Success-Response:
  *     HTTP/1.1 200 OK
- *     {
- *        used: used,
- *        available: 1000000
- *     }
+ *     [{
+            "path": "/nconrad/Athaliana.TAIR10_GeneAtlas_Experiments.tsv",
+            "size": 3190639,
+            "encoding": "7bit",
+            "name": "Athaliana.TAIR10_GeneAtlas_Experiments.tsv"
+        }, {
+            "path": "/nconrad/Sandbox_Experiments-1.tsv",
+            "size": 4309,
+            "encoding": "7bit",
+            "name": "Sandbox_Experiments-1.tsv"
+        }]
  */
-/*
-.get('/v0/quota', AuthRequired, (req, res) => {
-    const opts = req.query;
-    const userDir = '/Users/nc/';
+.post("/v0/upload",  AuthRequired, multer({ storage: storage }).array('uploads', 12), 
+    (req, res) => {
+    let user = req.user.id;
 
-    let str = execSync("du -s "+userDir).toString(),
-        e = str.indexOf('\t');
-    let used = parseInt(str.slice(0, e));
+    let log = [],
+        response = [];
+    req.files.forEach(f => {
+        log.push(f.path)
+        response.push({
+            path: f.reqPath,
+            size: f.size,
+            encoding: f.encoding,
+            name: f.originalname
+        })
+    })
 
-    let quota = {
-        used: used,
-        available: 1000000
-    }
-
-    res.send(quota);
+    console.log('user ('+user+') uploaded:\n', log.join('\n')+'\n' )
+    
+    res.send(response);
 })
-*/
+
+
 
 
 /**
@@ -209,7 +235,6 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
 .get('/test-service', (req, res) => {
     res.status(200).send( 'This is just a test. This is only a test.' );
 })
-
 
 
 function AuthRequired(req, res, next) {
@@ -233,11 +258,26 @@ function AuthRequired(req, res, next) {
         })
 }
 
+// takes user and requested path
+// returns the requested home and the path with user's home in path
+function securePath(user, path) {
+    let pathList = path.split('/').filter(s => { 
+        if (s !== '') return true;
+    })
+    let home = pathList.shift();
 
+    // replace user with authenticated user
+    let allowedPath = '/'+user+'/'+pathList.join('/');    
+
+    return {
+        requestedHome: home,
+        path: allowedPath
+    }
+}
 
 var server = http.listen(3000, () => {
     var host = server.address().address;
     var port = server.address().port;
 
-    console.log('Example app listening at http://%s:%s', host, port);
+    console.log('Service listening at http://%s:%s', host, port);
 });
