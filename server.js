@@ -46,7 +46,7 @@ if (cliOptions.dev) {
 // handle desination of uploads
 var storage = multer.diskStorage({
     destination: (req, file, cb) => {
-
+        
         // if multiple files, take path of first
         let reqPath = req.body.destPath;
         let path = reqPath instanceof Array ? reqPath[0] : reqPath;
@@ -200,21 +200,20 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
     (req, res) => {
     let user = req.user.id;
 
-    let log = [],
-        response = [];
+    let log = [], response = [];
+
     req.files.forEach(f => {
         log.push(f.path)
         response.push({
-            path: f.reqPath,
+            path: f.path,            
+            name: f.filename,        
             size: f.size,
-            encoding: f.encoding,
-            name: f.originalname,
             mtime: Date.now()
         })
     })
 
     console.log('user ('+user+') uploaded:\n', log.join('\n')+'\n' )
-    
+
     res.send(response);
 })
 
