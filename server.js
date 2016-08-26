@@ -48,7 +48,7 @@ var storage = multer.diskStorage({
     destination: (req, file, cb) => {
 
         // if multiple files, take path of first
-        let reqPath = req.body.userPath;
+        let reqPath = req.body.destPath;
         let path = reqPath instanceof Array ? reqPath[0] : reqPath;
         let securedReq = securePath(req.user.id, path)
         
