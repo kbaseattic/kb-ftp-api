@@ -205,7 +205,7 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
     req.files.forEach(f => {
         log.push(f.path)
         response.push({
-            path: f.path,            
+            path: f.reqPath,            
             name: f.filename,        
             size: f.size,
             mtime: Date.now()
