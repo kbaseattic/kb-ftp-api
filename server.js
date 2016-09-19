@@ -6,7 +6,6 @@ var config = require('./config.json');
 
 var app             = require('express')(),
     multer          = require('multer'),
-    //upload          = multer({ dest: 'uploads/' }),
     http            = require('http').Server(app),
     cors            = require('cors'),
     bodyParser      = require('body-parser');
@@ -17,6 +16,7 @@ var request         = require('request'),
     fs              = require('fs'),
     pathUtil        = require('path'),
     execSync        = require('child_process').execSync,
+    Promise         = require('promise'),
     when            = require("promised-io/promise").when;
 
 var validateToken 	= require('./lib/validateToken.js');
@@ -26,6 +26,10 @@ var validateToken 	= require('./lib/validateToken.js');
 cliOptions.version('0.0.1')
            .option('-d, --dev', 'Developer mode; this option attempts to use a token in the file: dev-user-token')
            .parse(process.argv);
+
+// Configure CORs and body parser.
+app.use( cors() )
+   .use( bodyParser.urlencoded({extended: false, limit: '50mb'}) );
 
 
 // if --dev option is used, set token to token in file "./dev-user-token"
@@ -44,7 +48,7 @@ if (cliOptions.dev) {
 }
 
 // handle desination of uploads
-var storage = multer.diskStorage({
+let storage = multer.diskStorage({
     destination: (req, file, cb) => {
         
         // if multiple files, take path of first
@@ -53,18 +57,15 @@ var storage = multer.diskStorage({
         let securedReq = securePath(req.user.id, path)
         
         file.reqPath = securedReq.path+file.originalname;
-
-        cb(null, config.ftpRoot+securedReq.path)        
+        file.serverPath = config.ftpRoot+securedReq.path;
+        cb(null, file.serverPath);        
     },
     filename: (req, file, cb) => {
-        cb(null, file.originalname)
+        // save file to <path>.part first, and then move to <path>        
+        file.tmpPath = file.serverPath+file.originalname+'.part';
+        cb(null, file.originalname+'.part')
     }
 })
-
-// Configure CORs and body parser.
-app.use( cors() )
-   .use( bodyParser.urlencoded({extended: false, limit: '50mb'}) );
-
 
 // Configure Logging
 app.use( (req, res, next) => {
@@ -200,21 +201,28 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
     (req, res) => {
     let user = req.user.id;
 
-    let log = [], response = [];
+    let proms = [],
+        log = [], 
+        response = [];
 
     req.files.forEach(f => {
-        log.push(f.path)
+        log.push(f.path);
         response.push({
             path: f.reqPath,            
-            name: f.filename,        
+            name: f.originalname,        
             size: f.size,
             mtime: Date.now()
         })
+
+        proms.push( move(f.tmpPath, f.serverPath+f.originalname) )
     })
 
-    console.log('user ('+user+') uploaded:\n', log.join('\n')+'\n' )
-
-    res.send(response);
+    Promise.all(proms).then((result) => {
+        console.log('user ('+user+') uploaded:', f.reqPath)
+        res.send(response);
+    }).catch((error) => {
+        console.log('move error', error)
+    })
 })
 
 
@@ -273,6 +281,17 @@ function securePath(user, path) {
         requestedHome: home,
         path: allowedPath
     }
+}
+
+function move(oldPath, newPath) {
+    return new Promise((resolve, reject) => {
+        fs.rename(oldPath, newPath, function (err) {
+            if (err) 
+                reject('could not move .part file; '+oldPath+' => '+newPath);
+            else 
+                resolve();
+        });
+    });
 }
 
 var server = http.listen(3000, () => {
