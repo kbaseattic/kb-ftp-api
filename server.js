@@ -62,7 +62,6 @@ let storage = multer.diskStorage({
     },
     filename: (req, file, cb) => {
         // save file to <path>.part first, and then move to <path>        
-        file.tmpPath = file.serverPath+file.originalname+'.part';
         cb(null, file.originalname+'.part')
     }
 })
@@ -206,7 +205,7 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
         response = [];
 
     req.files.forEach(f => {
-        log.push(f.path);
+        log.push(f.reqPath);
         response.push({
             path: f.reqPath,            
             name: f.originalname,        
@@ -214,11 +213,11 @@ app.get('/v0/list/*', AuthRequired, (req, res) => {
             mtime: Date.now()
         })
 
-        proms.push( move(f.tmpPath, f.serverPath+f.originalname) )
+        proms.push( move(f.path, f.serverPath+f.originalname) )
     })
 
     Promise.all(proms).then((result) => {
-        console.log('user ('+user+') uploaded:', f.reqPath)
+        console.log('user ('+user+') uploaded:\n', log.join('\n') )
         res.send(response);
     }).catch((error) => {
         console.log('move error', error)
