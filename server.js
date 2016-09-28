@@ -274,7 +274,7 @@ function securePath(user, path) {
     let home = pathList.shift();
 
     // replace user with authenticated user
-    let allowedPath = '/'+user+'/'+pathList.join('/');    
+    let allowedPath = '/'+user+'/'+pathList.join('/')+'/';    
 
     return {
         requestedHome: home,
