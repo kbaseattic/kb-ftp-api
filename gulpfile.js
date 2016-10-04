@@ -2,6 +2,7 @@ var gulp = require('gulp'),
     spawn = require('child_process').spawn,
     fs = require('fs');
 
+// not sure about this...
 var server;
 
 /**
@@ -9,10 +10,12 @@ var server;
  * Launch the server in dev mode.  If there's a server already running, kill it.
  * Rebuild docs on start and file change.
  */
-gulp.task('server', function() {
+gulp.task('server', function () {
     gulp.run('docs')
 
-    if (server) server.kill()
+    if (server) {
+        server.kill()
+    }
     server = spawn('node', ['server.js', '--dev'], {stdio: 'inherit'})
     server.on('close', function (code) {
         if (code === 8) {
@@ -25,7 +28,7 @@ gulp.task('server', function() {
  * $ gulp test
  * Run api tests via jasmine-node.
  */
-gulp.task('test', function() {
+gulp.task('test', function () {
     server = spawn('jasmine-node', ['./tests/'], {stdio: 'inherit'})
 })
 
@@ -34,7 +37,7 @@ gulp.task('test', function() {
  * $ gulp docs
  * Create web documentation data
  */
-gulp.task('docs', function() {
+gulp.task('docs', function () {
     var outputFile = './api-documentation.json'
     var stream = fs.createWriteStream(outputFile);
 
@@ -46,7 +49,7 @@ gulp.task('docs', function() {
     docs.on('close', function (code) {
         console.log('Wrote API documentation JSON to: ' + outputFile);
         //fs.createReadStream(outputFile).pipe(
-            //fs.createWriteStream('path to docs')
+        //fs.createWriteStream('path to docs')
         //);
     });
 })
@@ -56,15 +59,16 @@ gulp.task('docs', function() {
  * $ gulp
  * Start the development environment
  */
-gulp.task('default', function() {
+gulp.task('default', function () {
     gulp.run('server')
 
-    gulp.watch(['./server.js', './parsers/*.js', './docs/*.js'], function() {
+    gulp.watch(['./server.js', './parsers/*.js', './docs/*.js'], function () {
         gulp.run('server')
     })
 })
 
 // clean up if an error goes unhandled.
-process.on('exit', function() {
-    if (server) server.kill()
+process.on('exit', function () {
+    if (server)
+        server.kill()
 })

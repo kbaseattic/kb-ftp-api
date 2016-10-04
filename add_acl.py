@@ -22,14 +22,18 @@ if not os.path.exists(args.sharedDir):
     os.makedirs(args.sharedDir)
     os.chmod(args.sharedDir, 0777)
 
-tc = TransferClient() # uses transfer_token from the config file
-auth = AuthClient()
+authToken = ''
+transferToken = ''
+endpointId = ''
+
+tc = TransferClient(authorizer=transferToken) # uses transfer_token from the config file
+auth = AuthClient(authorizer=authToken)
 
 identities = auth.get_identities(usernames="%s@globusid.org" % args.shareName)
 user_identity_id = identities['identities'][0]['id']
 try:
    tc.add_endpoint_acl_rule(
-       '3aca022a-5e5b-11e6-8309-22000b97daec',
+       endpointId,
        dict(principal=user_identity_id,
             principal_type='identity', path=args.sharedDir, permissions='rw'),
    )

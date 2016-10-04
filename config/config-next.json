@@ -1,0 +1,18 @@
+{
+    "ftpRoot": "/data/bulk",
+    "services": {
+        "user_job_state": {
+            "url": "https://next.kbase.us/services/userandjobstate"
+        },
+        "login": {
+            "url": "https://next.kbase.us/services/authorization/Sessions/Login"
+        }
+    },
+    "globus": {
+        "transfer_service_url": "https://transfer.api.globusonline.org/v0.10",
+        "nexus_service_url": "https://nexus.api.globusonline.org",
+        "auth_service": "https://auth.globus.org",
+        "endpointId": "",
+        "shareId": ""
+    }
+}

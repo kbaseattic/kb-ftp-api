@@ -1,4 +1,3 @@
-
 dev-user-token
 *password*
 api-documentation.json
@@ -10,3 +9,6 @@ npm-debug.log
 \#*\#
 
 config.json
+/nbproject/
+/tokens/
+/config/env.json
