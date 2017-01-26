@@ -227,18 +227,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
              * transfer ACL.
              */
             if (!exists) {
-                return fs.mkdirAsync(userDir)
-                    .then(() => {
-                        var client = transferClient.make({
-                            authApiBase: config.globus.auth_service_url,
-                            transferApiBase: config.globus.transfer_service_url,
-                            authToken: env.globusAuthToken,
-                            transferToken: env.globusTransferToken,
-                            endpointId: config.globus.endpointId
-                        });
-
-                        return client.addUserShare(user, config.ftpRoot);
-                    });
+                return fs.mkdirAsync(userDir);
             }
         })
         .then(function () {
