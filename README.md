@@ -12,7 +12,7 @@ node
 ## Local Installation
 
 ```
-git clone https://github.com/nconrad/kb-ftp-api.git
+git clone https://github.com/kbase/kb-ftp-api.git
 cd kb-ftp-api
 npm install
 ```

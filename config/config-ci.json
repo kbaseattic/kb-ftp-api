@@ -6,6 +6,9 @@
         },
         "login": {
             "url": "https://ci.kbase.us/services/authorization/Sessions/Login"
+        },
+        "auth": {
+            "url": "https://ci.kbase.us/services/auth"
         }
     },
     "globus": {

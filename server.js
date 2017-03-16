@@ -68,7 +68,7 @@ if (cliOptions.dev) {
 }
 
 
-// handle desination of uploads. The "multer" package provides for 
+// handle desination of uploads. The "multer" package provides for
 // multipart transfers.
 let storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -76,14 +76,14 @@ let storage = multer.diskStorage({
         // if multiple files, take path of first
         let reqPath = req.body.destPath;
         let path = reqPath instanceof Array ? reqPath[0] : reqPath;
-        let securedReq = securePath(req.user.id, path);
+        let securedReq = securePath(req.session.id, path);
 
         file.reqPath = securedReq.path + file.originalname;
         file.serverPath = config.ftpRoot + securedReq.path;
         cb(null, file.serverPath);
     },
     filename: (req, file, cb) => {
-        // save file to <path>.part first, and then move to <path>        
+        // save file to <path>.part first, and then move to <path>
         cb(null, file.originalname + '.part');
     }
 });
@@ -117,22 +117,24 @@ function AuthRequired(req, res, next) {
         res.status(401).send({error: 'Auth is required!'});
     }
 
-    when(validateToken(req.headers.authorization),
-        userObj => {
-            if (!(userObj && 'id' in userObj)) {
-                res.status(401).send({error: 'Invalid token!'});
-                return;
-            }
+    validateToken(config.services.auth.url, req.headers.authorization)
+    .then(sessionObj => {
+        if (!sessionObj) {
+            res.status(401).send({error: 'Invalid token!'});
+            return;
+        }
 
-            // Pass user id along
-            req.user = userObj;
+        // Pass user id along
+        req.session = sessionObj;
 
-            // safe to move along.
-            next();
-        });
+        // safe to move along.
+        next();
+    }).catch(error => {
+        res.status(500).send({error: 'Unable to validate authentication credentials'});
+    });
 }
 
-/* 
+/*
  * Given a username and a requested path, ensure that the username matches
  * the username component of the path.
  * returns the requested home and the path with user's home in path
@@ -142,7 +144,7 @@ function securePath(username, path) {
         return s.length === 0 ? false : true;
     });
     let home = pathList.shift();
-    
+
     if (home !== username) {
         utils.log('ERROR', 'Username does not match path prefix', {username: username, path: path, home: home});
         throw new Error('User (' + username + ')' +
@@ -203,10 +205,10 @@ function move(oldPath, newPath) {
  *     ]
  */
 app.get('/list/*', AuthRequired, (req, res) => {
-    const user = req.user.id,
-        fileListOptions = req.query;
+    const user = req.session.user,
+        fileListOptions = req.query,
+        requestedPath = req.params[0];
 
-    const requestedPath = req.params[0];
     try {
         var securedReq = securePath(user, requestedPath);
     } catch (ex) {
@@ -222,7 +224,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
     fileExists(userDir)
         .then(function (exists) {
             /*
-             * If a directory does not exist for this user, 
+             * If a directory does not exist for this user,
              * create a directory and give the user RW access via globus
              * transfer ACL.
              */
@@ -234,7 +236,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
             /*
              * Return a list of the file contents. Note that there is some
              * filtering here -- the request may ask for files or folders.
-             * 
+             *
              */
             return fs.readdirAsync(fullPath)
                 .then(function (files) {
@@ -302,7 +304,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
      */
     .post("/upload", AuthRequired, multer({storage: storage}).array('uploads', 12),
         (req, res) => {
-        let user = req.user.id;
+        let user = req.session.user;
 
         let proms = [],
             log = [],
@@ -345,6 +347,10 @@ app.get('/list/*', AuthRequired, (req, res) => {
      */
     .get('/test-service', (req, res) => {
         res.status(200).send('This is just a test. This is only a test.');
+    })
+    .get('/test-auth', AuthRequired, (req, res) => {
+        res.status(200).send('I\'m authenticated as ' + req.session.user);
+
     });
 
 /*
@@ -357,14 +363,14 @@ app
     .post('/import-jobs', AuthRequired, (req, res) => {
         /*
          * Creates an import-jobs record in UJS. The UJS job description
-         * stores a list of of import job ids provided, and the 
+         * stores a list of of import job ids provided, and the
          * job status stores the object id for the target narrative.
          * The progress and completion are not used, so are set to sensible dummy values.
          */
         var ujs = serviceApiClientFactory.make({
             name: 'UserAndJobState',
             url: config.services.user_job_state.url,
-            token: req.user.token
+            token: req.session.token
         }),
             jobStatus = req.body.narrativeObjectId,
             jobDescription = req.body.jobIds.join(','),
@@ -387,7 +393,7 @@ app
         var ujs = serviceApiClientFactory.make({
             name: 'UserAndJobState',
             url: config.services.user_job_state.url,
-            token: req.user.token
+            token: req.session.token
         });
         ujs.rpcRequest('list_jobs', [['bulkio'], ''])
             .then(function (results) {
@@ -405,7 +411,7 @@ app
         var ujs = serviceApiClientFactory.make({
             name: 'UserAndJobState',
             url: config.services.user_job_state.url,
-            token: req.user.token
+            token: req.session.token
         });
         ujs.rpcRequest('get_job_info', [req.params.jobid])
             .then(function (results) {
@@ -420,12 +426,12 @@ app
     .delete('/import-job/:jobid', AuthRequired, (req, res) => {
         /*
          * Delete the given ujs job. This provides the UI function in which a
-         * user may remove an import job from their import listing panel. 
+         * user may remove an import job from their import listing panel.
          */
         var ujs = serviceApiClientFactory.make({
             name: 'UserAndJobState',
             url: config.services.user_job_state.url,
-            token: req.user.token
+            token: req.session.token
         }),
             // for for now
             jobIdToDelete = req.params.jobid;

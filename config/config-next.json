@@ -6,6 +6,9 @@
         },
         "login": {
             "url": "https://next.kbase.us/services/authorization/Sessions/Login"
+        },
+        "auth": {
+            "url": "https://next.kbase.us/services/auth"
         }
     },
     "globus": {
