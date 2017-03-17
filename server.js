@@ -115,6 +115,7 @@ function AuthRequired(req, res, next) {
     // if no token at all, return 401
     if (!('authorization' in req.headers)) {
         res.status(401).send({error: 'Auth is required!'});
+        return;
     }
     validateToken(config.services.auth.url, req.headers.authorization)
     .then(sessionObj => {
@@ -127,9 +128,12 @@ function AuthRequired(req, res, next) {
         req.session = sessionObj;
 
         // safe to move along.
+        console.log('doing next step')
         next();
     }).catch(error => {
+        console.log('dealing with error')
         res.status(500).send({error: 'Unable to validate authentication credentials'});
+        return;
     });
 }
 
