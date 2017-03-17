@@ -128,10 +128,8 @@ function AuthRequired(req, res, next) {
         req.session = sessionObj;
 
         // safe to move along.
-        console.log('doing next step')
         next();
     }).catch(error => {
-        console.log('dealing with error')
         res.status(500).send({error: 'Unable to validate authentication credentials'});
         return;
     });
@@ -182,6 +180,30 @@ function move(oldPath, newPath) {
     });
 }
 
+/*
+ * Creates a file called .globus_id with a single token = the globus user id.
+ * This is probably in the form of an email, something like "my_user_name@globusid.org"
+ * Downstream things (like the add_acl.py script) should deal with that file.
+ *
+ * Note that this only adds it if the file does not exist.
+ */
+function addGlobusIdFile(homeDir, globusUserId) {
+    let idFilePath = homeDir + '/.globus_id'
+    // if file exists, return silently
+    console.log('Looking up file ' + idFilePath)
+    return fileExists(idFilePath)
+        .then(exists => {
+            if (!exists) {
+                console.log('writing the file')
+                return fs.writeFile(idFilePath, globusUserId)
+            }
+        })
+        .catch(error => {
+            utils.log('ERROR', 'Error writing globus id file', {error: err});
+            res.status(500).send({error: err});
+        })
+}
+
 /**
  * @api {get} /list/:path list files/folders in path
  * @apiName list
@@ -210,7 +232,8 @@ function move(oldPath, newPath) {
 app.get('/list/*', AuthRequired, (req, res) => {
     const user = req.session.user,
         fileListOptions = req.query,
-        requestedPath = req.params[0];
+        requestedPath = req.params[0],
+        globusId = req.session.globusUser;
 
     try {
         var securedReq = securePath(user, requestedPath);
@@ -237,6 +260,12 @@ app.get('/list/*', AuthRequired, (req, res) => {
         })
         .then(function () {
             /*
+             * Write the globus id file if it doesn't exist already.
+             */
+            return addGlobusIdFile(userDir, globusId)
+        })
+        .then(function () {
+            /*
              * Return a list of the file contents. Note that there is some
              * filtering here -- the request may ask for files or folders.
              *
@@ -255,6 +284,9 @@ app.get('/list/*', AuthRequired, (req, res) => {
                             return;
                         }
                         if (fileListOptions.type === 'folder' && !isDir) {
+                            return;
+                        }
+                        if (file === '.globus_id') {
                             return;
                         }
 
@@ -307,11 +339,14 @@ app.get('/list/*', AuthRequired, (req, res) => {
      */
     .post("/upload", AuthRequired, multer({storage: storage}).array('uploads', 12),
         (req, res) => {
-        let user = req.session.user;
-
-        let proms = [],
+        let user = req.session.user,
+            globusId = req.session.globusUser,
+            proms = [],
             log = [],
             response = [];
+
+        const rootDir = config.ftpRoot,
+            userDir = [rootDir, user].join('/');
 
         req.files.forEach(f => {
             log.push(f.reqPath);
@@ -324,6 +359,8 @@ app.get('/list/*', AuthRequired, (req, res) => {
 
             proms.push(move(f.path, f.serverPath + f.originalname));
         });
+        proms.push(addGlobusIdFile(userDir, globusId));
+
 
         Promise.all(proms)
             .then(() => {
