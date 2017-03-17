@@ -17,7 +17,7 @@ var app = require('express')(),
     pathUtil = require('path'),
     // execSync = require('child_process').execSync,
     Promise = require('promise'),
-    when = require("promised-io/promise").when;
+    when = require('promised-io/promise').when;
 
 // Internal deps
 var validateToken = require('./lib/validateToken.js'),
@@ -116,7 +116,7 @@ function AuthRequired(req, res, next) {
     if (!('authorization' in req.headers)) {
         res.status(401).send({error: 'Auth is required!'});
     }
-
+    console.log(req.headers.authorization)
     validateToken(config.services.auth.url, req.headers.authorization)
     .then(sessionObj => {
         if (!sessionObj) {
