@@ -6,9 +6,29 @@ var r = require('request'),
     fs = require('fs')
 
 var baseUrl = 'http://0.0.0.0:3000',
-    testConfig = JSON.parse(fs.readFileSync('tests/test-cfg.json', 'utf8')),
-    token = testConfig.authToken,
+    token = null,
+    testUser = null
+try {
+    var testConfig = JSON.parse(fs.readFileSync('tests/test-cfg.json', 'utf8'))
+    token = testConfig.authToken
+    if (token === null || token === undefined) {
+        throw new Error("Your test-cfg.json file must have a valid authToken value.")
+    }
     testUser = testConfig.userId
+    if (testUser === null || testUser === undefined) {
+        throw new Error("Your test-cfg.json file must have a valid user id.")
+    }
+} catch (e) {
+    if (e.code === "ENOENT") {
+        console.error("There needs to be a test-cfg.json file with authToken and userId keys.")
+    }
+    else {
+        console.error(e)
+    }
+    console.error("Please see README.md for details.")
+    process.exit(1)
+}
+
 console.log('\n\x1b[36m'+'using testing token:'+'\x1b[0m', token)
 console.log('\n\x1b[36m'+'using test user:'+'\x1b[0m', testUser)
 

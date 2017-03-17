@@ -34,6 +34,13 @@ gulp
 
 ## Running Tests
 
+Running tests requires a file called `tests/test-cfg.json`. This is a JSON file with the expected structure:
+```
+{
+    "authToken": Valid authentication token string,
+    "userId": The user id linked to that token
+}
+```
 API tests are ran with `npm test` or `gulp test`.
 
 ```
