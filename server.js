@@ -116,7 +116,6 @@ function AuthRequired(req, res, next) {
     if (!('authorization' in req.headers)) {
         res.status(401).send({error: 'Auth is required!'});
     }
-    console.log(req.headers.authorization)
     validateToken(config.services.auth.url, req.headers.authorization)
     .then(sessionObj => {
         if (!sessionObj) {
