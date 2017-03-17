@@ -6,8 +6,11 @@ var r = require('request'),
     fs = require('fs')
 
 var baseUrl = 'http://0.0.0.0:3000',
-    token = fs.readFileSync('dev-user-token', 'utf8').trim();
-console.log('\n\x1b[36m'+'using testing token:'+'\x1b[0m', token, '\n')
+    testConfig = JSON.parse(fs.readFileSync('tests/test-cfg.json', 'utf8')),
+    token = testConfig.authToken,
+    testUser = testConfig.userId
+console.log('\n\x1b[36m'+'using testing token:'+'\x1b[0m', token)
+console.log('\n\x1b[36m'+'using test user:'+'\x1b[0m', testUser)
 
 var url = path => baseUrl + path
 
@@ -93,7 +96,40 @@ describe('KBase FTP API GET Requests', () => {
     })
 
     describe('GET /list', () => {
+        it('returns 401 with missing auth headers', done => {
+            r.get({url: url('/list/' + testUser)}, (error, response, body) => {
+                expect(response.statusCode).toBe(401)
+                done()
+            })
+        })
 
+        it('returns 403 with token/path root name mismatch', done => {
+            r.get({url: url('/list/notauser'), headers: validAuthHeader}, (error, response, body) => {
+                expect(response.statusCode).toBe(403)
+                done()
+            })
+        })
+
+        it('returns 404 with missing path', done => {
+            r.get({url: url('/list'), headers: validAuthHeader}, (error, response, body) => {
+                expect(response.statusCode).toBe(404)
+                done()
+            })
+        })
+
+        it('returns a list of files with proper path', done => {
+            const keyList = ['name', 'path', 'mtime', 'isFolder', 'size'].sort()
+            r.get({url: url('/list/' + testUser), headers: validAuthHeader}, (error, response, body) => {
+                expect(response.statusCode).toBe(200)
+                const result = JSON.parse(body)
+                expect(result).toEqual(jasmine.any(Array))
+                // don't really care about contents, but make sure keys are there
+                result.forEach(item => {
+                    expect(Object.keys(item).sort()).toEqual(keyList)
+                })
+                done()
+            })
+        })
     })
 })
 
