@@ -72,7 +72,6 @@ if (cliOptions.dev) {
 // multipart transfers.
 let storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        console.log(req.session)
         // if multiple files, take path of first
         let reqPath = req.body.destPath;
         let path = reqPath instanceof Array ? reqPath[0] : reqPath;
@@ -348,8 +347,6 @@ app.get('/list/*', AuthRequired, (req, res) => {
 
         const rootDir = config.ftpRoot,
             userDir = [rootDir, user].join('/');
-
-        console.log(req.files)
 
         req.files.forEach(f => {
             log.push(f.reqPath);
