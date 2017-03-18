@@ -39,7 +39,7 @@ var validAuthHeader = { 'Authorization': token }
 
 describe('KBase FTP API GET Requests', () => {
     describe('GET /', () => {
-        it('returns status code 404', done => {
+        it('returns status code 404', (done) => {
             r.get({url: url('/')}, (error, response, body) => {
                 expect(response.statusCode).toBe(404)
                 done()
@@ -48,7 +48,7 @@ describe('KBase FTP API GET Requests', () => {
     })
 
     describe('GET /test-service', () => {
-        it('returns status code 200 for /test-service', done => {
+        it('returns status code 200 for /test-service', (done) => {
             r.get({url: url('/test-service')}, (error, response, body) => {
                 expect(response.statusCode).toBe(200)
                 done()
@@ -57,21 +57,21 @@ describe('KBase FTP API GET Requests', () => {
     })
 
     describe('GET /test-auth', () => {
-        it('returns status code 500 for /test-auth with bad token', done => {
+        it('returns status code 500 for /test-auth with bad token', (done) => {
             r.get({url: url('/test-auth'), headers: {'Authorization': 'bad_token'}}, (error, response, body) => {
                 expect(response.statusCode).toBe(500)
                 done()
             })
         })
 
-        it('returns status code 401 for /test-auth with no token', done => {
+        it('returns status code 401 for /test-auth with no token', (done) => {
             r.get({url: url('/test-auth')}, (error, response, body) => {
                 expect(response.statusCode).toBe(401)
                 done()
             })
         })
 
-        it('returns status code 200 for /test-auth with good token', done => {
+        it('returns status code 200 for /test-auth with good token', (done) => {
             r.get({url: url('/test-auth'), headers: validAuthHeader}, (error, response, body) => {
                 expect(response.statusCode).toBe(200)
                 done()
@@ -80,7 +80,7 @@ describe('KBase FTP API GET Requests', () => {
     })
 
     describe('GET /import-jobs', () => {
-        it('returns current import-jobs, or an empty list', done => {
+        it('returns current import-jobs, or an empty list', (done) => {
             r.get({url: url('/import-jobs'), headers: validAuthHeader}, (error, response, body) => {
                 expect(response.statusCode).toBe(200)
                 const res = JSON.parse(body)
@@ -89,7 +89,7 @@ describe('KBase FTP API GET Requests', () => {
             })
         })
 
-        it('returns 401 without a token', done => {
+        it('returns 401 without a token', (done) => {
             r.get({url: url('/import-jobs')}, (error, response, body) => {
                 expect(response.statusCode).toBe(401)
                 done()
@@ -98,14 +98,14 @@ describe('KBase FTP API GET Requests', () => {
     })
 
     describe('GET /import-job/:jobid', () => {
-        it('returns 404 if parameter is missing', done => {
+        it('returns 404 if parameter is missing', (done) => {
             r.get({url: url('/import-job'), headers: validAuthHeader}, (error, response, body) => {
                 expect(response.statusCode).toBe(404)
                 done()
             })
         })
 
-        it('returns 500 for invalid id', done => {
+        it('returns 500 for invalid id', (done) => {
             const jobId = '123'
             r.get({url: url('/import-job/' + jobId), headers: validAuthHeader}, (error, response, body) => {
                 expect(response.statusCode).toBe(500)
@@ -116,28 +116,28 @@ describe('KBase FTP API GET Requests', () => {
     })
 
     describe('GET /list', () => {
-        it('returns 401 with missing auth headers', done => {
+        it('returns 401 with missing auth headers', (done) => {
             r.get({url: url('/list/' + testUser)}, (error, response, body) => {
                 expect(response.statusCode).toBe(401)
                 done()
             })
         })
 
-        it('returns 403 with token/path root name mismatch', done => {
+        it('returns 403 with token/path root name mismatch', (done) => {
             r.get({url: url('/list/notauser'), headers: validAuthHeader}, (error, response, body) => {
                 expect(response.statusCode).toBe(403)
                 done()
             })
         })
 
-        it('returns 404 with missing path', done => {
+        it('returns 404 with missing path', (done) => {
             r.get({url: url('/list'), headers: validAuthHeader}, (error, response, body) => {
                 expect(response.statusCode).toBe(404)
                 done()
             })
         })
 
-        it('returns a list of files with proper path', done => {
+        it('returns a list of files with proper path', (done) => {
             const keyList = ['name', 'path', 'mtime', 'isFolder', 'size'].sort()
             r.get({url: url('/list/' + testUser), headers: validAuthHeader}, (error, response, body) => {
                 expect(response.statusCode).toBe(200)
@@ -155,7 +155,27 @@ describe('KBase FTP API GET Requests', () => {
 
 describe('KBase FTP POST Requests', () => {
     describe('POST /upload', () => {
-
+        it('Should work on the happy path for a simple file', (done) => {
+            var formData = {
+                destPath: '/' + testUser,
+                username: testUser,
+                uploads: [
+                    fs.createReadStream('./tests/test_data_file.txt')
+                ]
+            }
+            r.post({url: url('/upload'),
+                    headers: validAuthHeader,
+                    formData: formData},
+                    (error, response, body) => {
+                expect(response.statusCode).toBe(200)
+                console.log(body)
+                const result = JSON.parse(body)
+                expect(result.length).toBe(1)
+                var resultKeys = ['path', 'name', 'size', 'mtime'].sort()
+                expect(Object.keys(result[0]).sort()).toEqual(resultKeys)
+                done()
+            })
+        })
     })
 
     describe('POST /import-jobs', () => {

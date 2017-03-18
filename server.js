@@ -72,11 +72,11 @@ if (cliOptions.dev) {
 // multipart transfers.
 let storage = multer.diskStorage({
     destination: (req, file, cb) => {
-
+        console.log(req.session)
         // if multiple files, take path of first
         let reqPath = req.body.destPath;
         let path = reqPath instanceof Array ? reqPath[0] : reqPath;
-        let securedReq = securePath(req.session.id, path);
+        let securedReq = securePath(req.session.user, path);
 
         file.reqPath = securedReq.path + file.originalname;
         file.serverPath = config.ftpRoot + securedReq.path;
@@ -188,19 +188,20 @@ function move(oldPath, newPath) {
  * Note that this only adds it if the file does not exist.
  */
 function addGlobusIdFile(homeDir, globusUserId) {
+    if (!globusUserId) {
+        return
+    }
     let idFilePath = homeDir + '/.globus_id'
     // if file exists, return silently
-    console.log('Looking up file ' + idFilePath)
     return fileExists(idFilePath)
         .then(exists => {
             if (!exists) {
-                console.log('writing the file')
                 return fs.writeFile(idFilePath, globusUserId)
             }
         })
         .catch(error => {
-            utils.log('ERROR', 'Error writing globus id file', {error: err});
-            res.status(500).send({error: err});
+            utils.log('ERROR', 'Error writing globus id file', {error: err})
+            res.status(500).send({error: err})
         })
 }
 
@@ -347,6 +348,8 @@ app.get('/list/*', AuthRequired, (req, res) => {
 
         const rootDir = config.ftpRoot,
             userDir = [rootDir, user].join('/');
+
+        console.log(req.files)
 
         req.files.forEach(f => {
             log.push(f.reqPath);
