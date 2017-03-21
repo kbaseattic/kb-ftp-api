@@ -1,0 +1,20 @@
+{
+    "ftpRoot": "./data/bulk",
+    "services": {
+        "user_job_state": {
+            "url": "https://ci.kbase.us/services/userandjobstate"
+        },
+        "login": {
+            "url": "https://ci.kbase.us/services/authorization/Sessions/Login"
+        },
+        "auth": {
+            "url": "https://ci.kbase.us/services/auth"
+        }
+    },
+    "globus": {
+        "transfer_service_url": "https://transfer.api.globusonline.org/v0.10",
+        "nexus_service_url": "https://nexus.api.globusonline.org",
+        "auth_service_url": "https://auth.globus.org",
+        "endpointId": "0a6a2f14-89b3-11e6-b030-22000b92c261"
+    }
+}

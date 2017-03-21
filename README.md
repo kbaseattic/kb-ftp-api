@@ -34,18 +34,29 @@ gulp
 
 ## Running Tests
 
-Running tests requires a file called `tests/test-cfg.json`. This is a JSON file with the expected structure:
+Running tests requires a little local setup. You'll need to do the following:
+1. **Set the test environment.**
+In `config/env.json` , set the deployment to "test". In the config directory, you can also modify `config-test.json` to your liking. Mainly, you'll need to set the "ftpRoot" key to a local directory of your choosing, that will be modified by the tests.
+
+2. **Make a local file storage directory.**
+As mentioned above, you need a local directory to act as a dummy FTP root. Create that and set it in `config/config-test.json`
+
+3. **Set the test configuration.**
+Running tests requires a file called `tests/test-cfg.json`. This is a JSON file with the following structure:
 ```
 {
     "authToken": Valid authentication token string,
     "userId": The user id linked to that token
 }
 ```
-API tests are ran with `npm test` or `gulp test`.
 
+4. **Start a server.**
 ```
-npm test
+node server.js
 ```
+
+5. **Run the tests.**
+API tests are run with `npm test` or `gulp test`.
 
 
 ## Building Web Documentation
