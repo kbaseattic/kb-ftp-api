@@ -84,7 +84,7 @@ describe('KBase FTP API GET Requests', () => {
             r.get({url: url('/import-jobs'), headers: validAuthHeader}, (error, response, body) => {
                 expect(response.statusCode).toBe(200)
                 const res = JSON.parse(body)
-                expect(res).toEqual({result: []})
+                expect(res.result).toEqual(jasmine.any(Array))
                 done()
             })
         })
