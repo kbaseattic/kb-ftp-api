@@ -186,16 +186,16 @@ function move(oldPath, newPath) {
  *
  * Note that this only adds it if the file does not exist.
  */
-function addGlobusIdFile(homeDir, globusUserId) {
-    if (!globusUserId) {
+function addGlobusIdFile(homeDir, globusIds) {
+    if (!globusIds || globusIds.length === 0) {
         return
     }
-    let idFilePath = homeDir + '/.globus_id'
+    const idFilePath = homeDir + '/.globus_id'
     // if file exists, return silently
     return fileExists(idFilePath)
         .then(exists => {
             if (!exists) {
-                return fs.writeFile(idFilePath, globusUserId)
+                return fs.writeFile(idFilePath, globusIds.join('\n'))
             }
         })
         .catch(error => {
@@ -233,7 +233,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
     const user = req.session.user,
         fileListOptions = req.query,
         requestedPath = req.params[0],
-        globusId = req.session.globusUser;
+        globusIds = req.session.globusUserIds;
 
     try {
         var securedReq = securePath(user, requestedPath);
@@ -262,7 +262,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
             /*
              * Write the globus id file if it doesn't exist already.
              */
-            return addGlobusIdFile(userDir, globusId)
+            return addGlobusIdFile(userDir, globusIds)
         })
         .then(function () {
             /*
@@ -340,7 +340,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
     .post("/upload", AuthRequired, multer({storage: storage}).array('uploads', 12),
         (req, res) => {
         let user = req.session.user,
-            globusId = req.session.globusUser,
+            globusIds = req.session.globusUserIds,
             proms = [],
             log = [],
             response = [];
@@ -359,7 +359,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
 
             proms.push(move(f.path, f.serverPath + f.originalname));
         });
-        proms.push(addGlobusIdFile(userDir, globusId));
+        proms.push(addGlobusIdFile(userDir, globusIds));
 
 
         Promise.all(proms)
