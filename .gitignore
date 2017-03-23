@@ -12,3 +12,4 @@ config.json
 /nbproject/
 /tokens/
 /config/env.json
+coverage

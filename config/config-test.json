@@ -1,5 +1,5 @@
 {
-    "ftpRoot": "/data/bulk",
+    "ftpRoot": "./data/bulk",
     "services": {
         "user_job_state": {
             "url": "https://ci.kbase.us/services/userandjobstate"

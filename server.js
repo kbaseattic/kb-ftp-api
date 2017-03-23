@@ -17,7 +17,7 @@ var app = require('express')(),
     pathUtil = require('path'),
     // execSync = require('child_process').execSync,
     Promise = require('promise'),
-    when = require("promised-io/promise").when;
+    when = require('promised-io/promise').when;
 
 // Internal deps
 var validateToken = require('./lib/validateToken.js'),
@@ -68,22 +68,21 @@ if (cliOptions.dev) {
 }
 
 
-// handle desination of uploads. The "multer" package provides for 
+// handle desination of uploads. The "multer" package provides for
 // multipart transfers.
 let storage = multer.diskStorage({
     destination: (req, file, cb) => {
-
         // if multiple files, take path of first
         let reqPath = req.body.destPath;
         let path = reqPath instanceof Array ? reqPath[0] : reqPath;
-        let securedReq = securePath(req.user.id, path);
+        let securedReq = securePath(req.session.user, path);
 
         file.reqPath = securedReq.path + file.originalname;
         file.serverPath = config.ftpRoot + securedReq.path;
         cb(null, file.serverPath);
     },
     filename: (req, file, cb) => {
-        // save file to <path>.part first, and then move to <path>        
+        // save file to <path>.part first, and then move to <path>
         cb(null, file.originalname + '.part');
     }
 });
@@ -115,24 +114,27 @@ function AuthRequired(req, res, next) {
     // if no token at all, return 401
     if (!('authorization' in req.headers)) {
         res.status(401).send({error: 'Auth is required!'});
+        return;
     }
+    validateToken(config.services.auth.url, req.headers.authorization)
+    .then(sessionObj => {
+        if (!sessionObj) {
+            res.status(401).send({error: 'Invalid token!'});
+            return;
+        }
 
-    when(validateToken(req.headers.authorization),
-        userObj => {
-            if (!(userObj && 'id' in userObj)) {
-                res.status(401).send({error: 'Invalid token!'});
-                return;
-            }
+        // Pass user id along
+        req.session = sessionObj;
 
-            // Pass user id along
-            req.user = userObj;
-
-            // safe to move along.
-            next();
-        });
+        // safe to move along.
+        next();
+    }).catch(error => {
+        res.status(500).send({error: 'Unable to validate authentication credentials'});
+        return;
+    });
 }
 
-/* 
+/*
  * Given a username and a requested path, ensure that the username matches
  * the username component of the path.
  * returns the requested home and the path with user's home in path
@@ -142,7 +144,7 @@ function securePath(username, path) {
         return s.length === 0 ? false : true;
     });
     let home = pathList.shift();
-    
+
     if (home !== username) {
         utils.log('ERROR', 'Username does not match path prefix', {username: username, path: path, home: home});
         throw new Error('User (' + username + ')' +
@@ -177,6 +179,31 @@ function move(oldPath, newPath) {
     });
 }
 
+/*
+ * Creates a file called .globus_id with a single token = the globus user id.
+ * This is probably in the form of an email, something like "my_user_name@globusid.org"
+ * Downstream things (like the add_acl.py script) should deal with that file.
+ *
+ * Note that this only adds it if the file does not exist.
+ */
+function addGlobusIdFile(homeDir, globusIds) {
+    if (!globusIds || globusIds.length === 0) {
+        return
+    }
+    const idFilePath = homeDir + '/.globus_id'
+    // if file exists, return silently
+    return fileExists(idFilePath)
+        .then(exists => {
+            if (!exists) {
+                return fs.writeFile(idFilePath, globusIds.join('\n'))
+            }
+        })
+        .catch(error => {
+            utils.log('ERROR', 'Error writing globus id file', {error: err})
+            res.status(500).send({error: err})
+        })
+}
+
 /**
  * @api {get} /list/:path list files/folders in path
  * @apiName list
@@ -203,10 +230,11 @@ function move(oldPath, newPath) {
  *     ]
  */
 app.get('/list/*', AuthRequired, (req, res) => {
-    const user = req.user.id,
-        fileListOptions = req.query;
+    const user = req.session.user,
+        fileListOptions = req.query,
+        requestedPath = req.params[0],
+        globusIds = req.session.globusUserIds;
 
-    const requestedPath = req.params[0];
     try {
         var securedReq = securePath(user, requestedPath);
     } catch (ex) {
@@ -222,7 +250,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
     fileExists(userDir)
         .then(function (exists) {
             /*
-             * If a directory does not exist for this user, 
+             * If a directory does not exist for this user,
              * create a directory and give the user RW access via globus
              * transfer ACL.
              */
@@ -232,9 +260,15 @@ app.get('/list/*', AuthRequired, (req, res) => {
         })
         .then(function () {
             /*
+             * Write the globus id file if it doesn't exist already.
+             */
+            return addGlobusIdFile(userDir, globusIds)
+        })
+        .then(function () {
+            /*
              * Return a list of the file contents. Note that there is some
              * filtering here -- the request may ask for files or folders.
-             * 
+             *
              */
             return fs.readdirAsync(fullPath)
                 .then(function (files) {
@@ -250,6 +284,9 @@ app.get('/list/*', AuthRequired, (req, res) => {
                             return;
                         }
                         if (fileListOptions.type === 'folder' && !isDir) {
+                            return;
+                        }
+                        if (file === '.globus_id') {
                             return;
                         }
 
@@ -302,11 +339,14 @@ app.get('/list/*', AuthRequired, (req, res) => {
      */
     .post("/upload", AuthRequired, multer({storage: storage}).array('uploads', 12),
         (req, res) => {
-        let user = req.user.id;
-
-        let proms = [],
+        let user = req.session.user,
+            globusIds = req.session.globusUserIds,
+            proms = [],
             log = [],
             response = [];
+
+        const rootDir = config.ftpRoot,
+            userDir = [rootDir, user].join('/');
 
         req.files.forEach(f => {
             log.push(f.reqPath);
@@ -319,6 +359,8 @@ app.get('/list/*', AuthRequired, (req, res) => {
 
             proms.push(move(f.path, f.serverPath + f.originalname));
         });
+        proms.push(addGlobusIdFile(userDir, globusIds));
+
 
         Promise.all(proms)
             .then(() => {
@@ -345,6 +387,10 @@ app.get('/list/*', AuthRequired, (req, res) => {
      */
     .get('/test-service', (req, res) => {
         res.status(200).send('This is just a test. This is only a test.');
+    })
+    .get('/test-auth', AuthRequired, (req, res) => {
+        res.status(200).send('I\'m authenticated as ' + req.session.user);
+
     });
 
 /*
@@ -357,14 +403,14 @@ app
     .post('/import-jobs', AuthRequired, (req, res) => {
         /*
          * Creates an import-jobs record in UJS. The UJS job description
-         * stores a list of of import job ids provided, and the 
+         * stores a list of of import job ids provided, and the
          * job status stores the object id for the target narrative.
          * The progress and completion are not used, so are set to sensible dummy values.
          */
         var ujs = serviceApiClientFactory.make({
             name: 'UserAndJobState',
             url: config.services.user_job_state.url,
-            token: req.user.token
+            token: req.session.token
         }),
             jobStatus = req.body.narrativeObjectId,
             jobDescription = req.body.jobIds.join(','),
@@ -387,7 +433,7 @@ app
         var ujs = serviceApiClientFactory.make({
             name: 'UserAndJobState',
             url: config.services.user_job_state.url,
-            token: req.user.token
+            token: req.session.token
         });
         ujs.rpcRequest('list_jobs', [['bulkio'], ''])
             .then(function (results) {
@@ -405,7 +451,7 @@ app
         var ujs = serviceApiClientFactory.make({
             name: 'UserAndJobState',
             url: config.services.user_job_state.url,
-            token: req.user.token
+            token: req.session.token
         });
         ujs.rpcRequest('get_job_info', [req.params.jobid])
             .then(function (results) {
@@ -420,12 +466,12 @@ app
     .delete('/import-job/:jobid', AuthRequired, (req, res) => {
         /*
          * Delete the given ujs job. This provides the UI function in which a
-         * user may remove an import job from their import listing panel. 
+         * user may remove an import job from their import listing panel.
          */
         var ujs = serviceApiClientFactory.make({
             name: 'UserAndJobState',
             url: config.services.user_job_state.url,
-            token: req.user.token
+            token: req.session.token
         }),
             // for for now
             jobIdToDelete = req.params.jobid;
