@@ -232,14 +232,14 @@ app.get('/list/*', AuthRequired, (req, res) => {
             /*
              * Write the globus id file if it doesn't exist already.
              */
-            return addGlobusIdFile(userDir, globusIds)
+            return addGlobusIdFile(userDir, globusIds);
         })
         .then(function () {
             /*
              * Return a list of the file contents. Note that there is some
              * filtering here -- the request may ask for files or folders.
              */
-            return fileManager.getFiles(fileListOptions, fullPath, false)
+            return fileManager.getFiles(fullPath, fileListOptions);
         })
         .then(function (files) {
             res.send(files);
