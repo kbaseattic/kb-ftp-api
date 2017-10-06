@@ -1,4 +1,5 @@
 /*global process*/
+/*eslint es6:true*/
 /*jslint white:true,node:true,single:true,multivar:true,es6:true*/
 // #!/usr/bin/env node
 'use strict';
@@ -23,7 +24,8 @@ var app = require('express')(),
 var validateToken = require('./lib/validateToken.js'),
     serviceApiClientFactory = require('./lib/serviceApiClient'),
     transferClient = require('./lib/globusTransfer'),
-    utils = require('./lib/utils');
+    utils = require('./lib/utils'),
+    fileManager = require('./lib/fileManager');
 
 
 cliOptions.version('0.1.0')
@@ -93,23 +95,6 @@ app.use((req, res, next) => {
     next();
 });
 
-/*
- * Since fs.exists is deprecated, this gives us an equivalent async
- * method.
- */
-function fileExists(path) {
-    return fs.accessAsync(path)
-        .then(() => {
-            return true;
-        })
-        .catch((err) => {
-            if (err.code === 'ENOENT') {
-                return false;
-            }
-            throw err;
-        });
-}
-
 function AuthRequired(req, res, next) {
     // if no token at all, return 401
     if (!('authorization' in req.headers)) {
@@ -163,21 +148,6 @@ function securePath(username, path) {
     };
 }
 
-/*
- * Async wrapping of move ...
- * TODO: this should just be using renameAsync, since we've alreay wrapped
- * fs in bluebird.
- */
-function move(oldPath, newPath) {
-    return new Promise((resolve, reject) => {
-        fs.rename(oldPath, newPath, function (err) {
-            if (err)
-                reject('could not move .part file; ' + oldPath + ' => ' + newPath);
-            else
-                resolve();
-        });
-    });
-}
 
 /*
  * Creates a file called .globus_id with a single token = the globus user id.
@@ -192,7 +162,7 @@ function addGlobusIdFile(homeDir, globusIds) {
     }
     const idFilePath = homeDir + '/.globus_id'
     // if file exists, return silently
-    return fileExists(idFilePath)
+    return fileManager.fileExists(idFilePath)
         .then(exists => {
             if (!exists) {
                 return fs.writeFile(idFilePath, globusIds.join('\n'))
@@ -209,7 +179,7 @@ function addGlobusIdFile(homeDir, globusIds) {
  * @apiName list
  *
  * @apiParam {string} path path to directory
- * @apiParam {string} ?type=(folders|files) only fetch folders or files
+ * @apiParam {string} ?type=(folder|file) only fetch folders or files
  *
  * @apiSampleRequest /list/my/genomes/
  *
@@ -247,7 +217,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
         fullPath = rootDir + path,
         userDir = [rootDir, user].join('/');
 
-    fileExists(userDir)
+    fileManager.fileExists(userDir)
         .then(function (exists) {
             /*
              * If a directory does not exist for this user,
@@ -268,43 +238,8 @@ app.get('/list/*', AuthRequired, (req, res) => {
             /*
              * Return a list of the file contents. Note that there is some
              * filtering here -- the request may ask for files or folders.
-             *
              */
-            return fs.readdirAsync(fullPath)
-                .then(function (files) {
-                    /*
-                     * Note that we use map + filter pattern
-                     */
-                    return files.map((file) => {
-                        let filePath = pathUtil.join(fullPath, file),
-                            stats = fs.statSync(filePath),
-                            isDir = stats.isDirectory();
-
-                        if (fileListOptions.type === 'file' && isDir) {
-                            return;
-                        }
-                        if (fileListOptions.type === 'folder' && !isDir) {
-                            return;
-                        }
-                        if (file === '.globus_id') {
-                            return;
-                        }
-
-                        return {
-                            name: file,
-                            path: path + file,
-                            mtime: stats.mtime.getTime(),
-                            size: stats.size,
-                            isFolder: isDir ? true : false
-                        };
-                    })
-                        .filter((fileObj) => {
-                            if (!fileObj) {
-                                return false;
-                            }
-                            return true;
-                        });
-                });
+            return fileManager.getFiles(fileListOptions, fullPath, false)
         })
         .then(function (files) {
             res.send(files);
@@ -314,10 +249,13 @@ app.get('/list/*', AuthRequired, (req, res) => {
             res.status(500).send({error: err});
         });
 })
+    .get('/search/*', AuthRequired, (req, res) => {
+        const query = req.params[0];
 
+    })
 
     /**
-     * @api {get} /upload post endpoint to upload data
+     * @api {post} /upload post endpoint to upload data
      * @apiName upload
      *
      * @apiSampleRequest /upload/
@@ -357,7 +295,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
                 mtime: Date.now()
             });
 
-            proms.push(move(f.path, f.serverPath + f.originalname));
+            proms.push(fileManager.move(f.path, f.serverPath + f.originalname));
         });
         proms.push(addGlobusIdFile(userDir, globusIds));
 

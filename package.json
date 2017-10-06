@@ -6,7 +6,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "jasmine-node tests",
+    "test": "istanbul cover --include-all-sources jasmine-node tests",
     "start": "node server.js"
   },
   "repository": {
