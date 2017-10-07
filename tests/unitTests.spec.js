@@ -2,6 +2,7 @@
 /*eslint white:true,node:true,single:true,multivar:true,es6:true*/
 
 var fileManager = require('../lib/fileManager'),
+    search = require('../lib/fileSearch'),
     pathUtil = require('path'),
     Promise = require('bluebird'),
     fs = Promise.promisifyAll(require('fs'));
@@ -108,6 +109,32 @@ describe('Test fileManager module', () => {
             });
     });
 
+    it('getFiles should return files / directories that match a query (recursive mode)', (done) => {
+        const query = 'deepest';
+        fileManager.getFiles(testPath, {deep: true, query: query})
+            .then((fileList) => {
+                expect(fileList.length).toBe(2);
+                expect(validateFileList(fileList)).toBe(true);
+                fileList.forEach((file) => {
+                    expect(file.path.indexOf(query)).toBeGreaterThan(-1);
+                });
+                done();
+            });
+    });
+
+    it('getFiles should throw an error if the root dir doesn\'t exist', (done) => {
+        fileManager.getFiles('not_a_path')
+            .then((fileList) => {
+                fail('getFiles should raise a ENOENT error with a bad path');
+            })
+            .catch((err) => {
+                expect(err.code).toBe('ENOENT');
+            })
+            .finally(() => {
+                done();
+            });
+    });
+
     it('fileExists should return true for a real directory', (done) => {
         fileManager.fileExists(testPath).then((exists) => {
             expect(exists).toBe(true);
@@ -135,26 +162,54 @@ describe('Test fileManager module', () => {
         let endPath = pathUtil.join(testPath, 'tmp-moved.txt');
         fs.writeFile(startPath, 'just a test!');
 
-        // make sure it's there.
         // move it.
         fileManager.move(startPath, endPath).then(() => {
+            // make sure it's no longer in the first place
             return fileManager.fileExists(startPath);
         }).then((exists) => {
             expect(exists).toBe(false);
+            // make sure it's in the second.
             return fileManager.fileExists(endPath);
         }).then((exists) => {
             expect(exists).toBe(true);
+            // delete it.
             fs.unlink(endPath);
         }).catch((err) => {
+            // on error, try to delete both
             console.error(err);
             fs.unlink(startPath);
             fs.unlink(endPath);
         }).finally(() => {
             done();
         });
-
-        // make sure it's no longer in the first place
-        // make sure it's in the second.
-        // delete it.
     });
+
+    it('search should find and return files only', (done) => {
+        search(testPath, 'deep', false).then(results => {
+            expect(results.length).toBe(5);
+            done();
+        });
+    });
+
+    it('search should find and return files AND directories', (done) => {
+        search(testPath, 'deep', true).then(results => {
+            expect(results.length).toBe(10);
+            done();
+        });
+    });
+
+    it('search should return an empty array with no hits', (done) => {
+        search(testPath, 'foobarbaz', true).then(results => {
+            expect(results.length).toBe(0);
+            done();
+        });
+    });
+
+    it('searching from a root dir that doesn\'t exist should return an empty array', (done) => {
+        search('not_real', 'still_not_real').then(results => {
+            expect(results.length).toBe(0);
+            done();
+        });
+    });
+
 });

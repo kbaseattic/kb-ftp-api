@@ -25,7 +25,8 @@ var validateToken = require('./lib/validateToken.js'),
     serviceApiClientFactory = require('./lib/serviceApiClient'),
     transferClient = require('./lib/globusTransfer'),
     utils = require('./lib/utils'),
-    fileManager = require('./lib/fileManager');
+    fileManager = require('./lib/fileManager'),
+    search = require('./lib/fileSearch');
 
 
 cliOptions.version('0.1.0')
@@ -250,8 +251,29 @@ app.get('/list/*', AuthRequired, (req, res) => {
         });
 })
     .get('/search/*', AuthRequired, (req, res) => {
-        const query = req.params[0];
+        const user = req.session.user,
+              query = req.params[0],
+              rootDir = config.ftpRoot,
+              userDir = pathUtil.join(rootDir, user);
 
+        fileManager.fileExists(userDir)
+            .then(exists => {
+                if (!exists) {
+                    throw new Error({
+                        code: 'ENOENT',
+                        error: 'no such file or directory to search from',
+                        path: userDir
+                    });
+                }
+                return search(userDir, query, false);
+            })
+            .then(results => {
+                res.send(results);
+            })
+            .catch(err => {
+                utils.log('ERROR', 'Error searching user directory', {error: err});
+                res.status(500).send({error: err});
+            });
     })
 
     /**
