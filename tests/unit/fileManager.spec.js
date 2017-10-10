@@ -1,8 +1,7 @@
 /*global process*/
 /*eslint white:true,node:true,single:true,multivar:true,es6:true*/
 
-var fileManager = require('../lib/fileManager'),
-    search = require('../lib/fileSearch'),
+var fileManager = require('../../lib/fileManager'),
     pathUtil = require('path'),
     Promise = require('bluebird'),
     fs = Promise.promisifyAll(require('fs'));
@@ -184,36 +183,36 @@ describe('Test fileManager module', () => {
         });
     });
 
-    xit('search should find and return files only', (done) => {
-        search(testPath, 'deep', false).then(results => {
+    it('search should find and return files only', (done) => {
+        fileManager.search(testPath, 'deep', false).then(results => {
             expect(results.length).toBe(5);
             done();
         });
     });
 
-    xit('search should find and return files AND directories', (done) => {
-        search(testPath, 'deep', true).then(results => {
+    it('search should find and return files AND directories', (done) => {
+        fileManager.search(testPath, 'deep', true).then(results => {
             expect(results.length).toBe(10);
             done();
         });
     });
 
-    xit('search should return an empty array with no hits', (done) => {
-        search(testPath, 'foobarbaz', true).then(results => {
+    it('search should return an empty array with no hits', (done) => {
+        fileManager.search(testPath, 'foobarbaz', true).then(results => {
             expect(results.length).toBe(0);
             done();
         });
     });
 
-    xit('searching from a root dir that doesn\'t exist should return an empty array', (done) => {
-        search('not_real', 'still_not_real').then(results => {
+    it('searching from a root dir that doesn\'t exist should return an empty array', (done) => {
+        fileManager.search('not_real', 'still_not_real').then(results => {
             expect(results.length).toBe(0);
             done();
         });
     });
 
     it('search should not include any terms that live on the path behind the root', (done) => {
-        search(testPath, 'tests').then(results => {
+        fileManager.search(testPath, 'tests').then(results => {
             expect(results.length).toBe(0);
             done();
         });

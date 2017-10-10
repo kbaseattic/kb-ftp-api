@@ -5,42 +5,32 @@
 'use strict';
 
 // External dependencies
-var app = require('express')(),
+const app = require('express')(),
     multer = require('multer'),
     http = require('http').Server(app),
     cors = require('cors'),
     bodyParser = require('body-parser'),
-    request = require('request'),
     extend = require('util')._extend,
     cliOptions = require('commander'),
     Promise = require('bluebird'),
     fs = Promise.promisifyAll(require('fs')),
-    pathUtil = require('path'),
-    // execSync = require('child_process').execSync,
-    Promise = require('promise'),
-    when = require('promised-io/promise').when;
+    pathUtil = require('path');
 
-// Internal deps
-var validateToken = require('./lib/validateToken.js'),
-    serviceApiClientFactory = require('./lib/serviceApiClient'),
-    transferClient = require('./lib/globusTransfer'),
-    utils = require('./lib/utils'),
-    fileManager = require('./lib/fileManager'),
-    search = require('./lib/fileSearch');
-
-
-cliOptions.version('0.1.0')
-    .option('-d, --dev', 'Developer mode; this option attempts to use a token in the file: dev-user-token')
-    .parse(process.argv);
-
-// Configuration
-/*
+/** Internal dependnecies
  * The "env" config file stores volative configuration. It should be created
  * per-deployment. E.g. it switches to one of the "config-ENV.json" files
  * which have per-deployment configuration.
  */
-var env = require('./config/env.json');
-var config = require('./config/config-' + env.deployment + '.json');
+var env = require('./config/env.json'),
+    config = require('./config/config-' + env.deployment + '.json'),
+    AuthRequired = require('./lib/middlewares/auth')(config),
+    serviceApiClientFactory = require('./lib/serviceApiClient'),
+    writeLog = require('./lib/utils/log'),
+    fileManager = require('./lib/fileManager');
+
+cliOptions.version('0.1.0')
+    .option('-d, --dev', 'Developer mode; this option attempts to use a token in the file: dev-user-token')
+    .parse(process.argv);
 
 // Get the bulkio service token. This token must be set at deployment time
 // via the usage of the script 'get-bulkio-token.js'.
@@ -59,7 +49,7 @@ app.use(cors())
 // otherwise, pass on token for all routes, if there is one
 if (cliOptions.dev) {
     let token = fs.readFileSync('dev-user-token', 'utf8').trim();
-    console.log('\n\x1b[36m' + 'using development token:' + '\x1b[0m', token, '\n');
+    writeLog('\n\x1b[36m' + 'using development token:' + '\x1b[0m', token, '\n');
 
     app.all('/', (req, res, next) => {
         req.headers = {"Authorization": token};
@@ -71,7 +61,7 @@ if (cliOptions.dev) {
 }
 
 
-// handle desination of uploads. The "multer" package provides for
+// Handle destination of uploads. The "multer" package provides for
 // multipart transfers.
 let storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -92,47 +82,23 @@ let storage = multer.diskStorage({
 
 // Configure Logging
 app.use((req, res, next) => {
-    utils.log('INFO', `${req.method} ${req.url}`);
+    writeLog('INFO', `${req.method} ${req.url}`);
     next();
 });
-
-function AuthRequired(req, res, next) {
-    // if no token at all, return 401
-    if (!('authorization' in req.headers)) {
-        res.status(401).send({error: 'Auth is required!'});
-        return;
-    }
-    validateToken(config.services.auth.url, req.headers.authorization)
-    .then(sessionObj => {
-        if (!sessionObj) {
-            res.status(401).send({error: 'Invalid token!'});
-            return;
-        }
-
-        // Pass user id along
-        req.session = sessionObj;
-
-        // safe to move along.
-        next();
-    }).catch(error => {
-        res.status(500).send({error: 'Unable to validate authentication credentials'});
-        return;
-    });
-}
 
 /*
  * Given a username and a requested path, ensure that the username matches
  * the username component of the path.
  * returns the requested home and the path with user's home in path
-*/
+ */
 function securePath(username, path) {
-    let pathList = path.split('/').filter( (s) => {
+    let pathList = path.split('/').filter((s) => {
         return s.length === 0 ? false : true;
     });
     let home = pathList.shift();
 
     if (home !== username) {
-        utils.log('ERROR', 'Username does not match path prefix', {username: username, path: path, home: home});
+        writeLog('ERROR', 'Username does not match path prefix', {username: username, path: path, home: home});
         throw new Error('User (' + username + ')' +
             ' does not have permission to access: ' + path + '(' + home + ')');
     }
@@ -161,18 +127,18 @@ function addGlobusIdFile(homeDir, globusIds) {
     if (!globusIds || globusIds.length === 0) {
         return
     }
-    const idFilePath = homeDir + '/.globus_id'
+    const idFilePath = homeDir + '/.globus_id';
     // if file exists, return silently
     return fileManager.fileExists(idFilePath)
         .then(exists => {
             if (!exists) {
-                return fs.writeFile(idFilePath, globusIds.join('\n'))
+                return fs.writeFile(idFilePath, globusIds.join('\n'));
             }
         })
         .catch(error => {
-            utils.log('ERROR', 'Error writing globus id file', {error: err})
-            res.status(500).send({error: err})
-        })
+            writeLog('ERROR', 'Error writing globus id file', {error: err});
+            res.status(500).send({error: err});
+        });
 }
 
 /**
@@ -246,7 +212,7 @@ app.get('/list/*', AuthRequired, (req, res) => {
             res.send(files);
         })
         .catch(function (err) {
-            utils.log('ERROR', 'Error listing directory contents', {error: err});
+            writeLog('ERROR', 'Error listing directory contents', {error: err});
             res.status(500).send({error: err});
         });
 })
@@ -265,13 +231,13 @@ app.get('/list/*', AuthRequired, (req, res) => {
                         path: userDir
                     });
                 }
-                return search(userDir, query, false);
+                return fileManager.search(userDir, query, false);
             })
             .then(results => {
                 res.send(results);
             })
             .catch(err => {
-                utils.log('ERROR', 'Error searching user directory', {error: err});
+                writeLog('ERROR', 'Error searching user directory', {error: err});
                 res.status(500).send({error: err});
             });
     })
@@ -301,8 +267,8 @@ app.get('/list/*', AuthRequired, (req, res) => {
         (req, res) => {
         let user = req.session.user,
             globusIds = req.session.globusUserIds,
-            proms = [],
             log = [],
+            proms = [],
             response = [];
 
         const rootDir = config.ftpRoot,
@@ -321,15 +287,14 @@ app.get('/list/*', AuthRequired, (req, res) => {
         });
         proms.push(addGlobusIdFile(userDir, globusIds));
 
-
         Promise.all(proms)
             .then(() => {
-                utils.log('INFO', 'user (' + user + ') uploaded:\n', log.join('\n'));
+                writeLog('INFO', 'user (' + user + ') uploaded:\n', log.join('\n'));
                 res.send(response);
             })
             .catch((error) => {
                 // TODO: this error should propagate!
-                utils.log('ERROR', 'move error', error);
+                writeLog('ERROR', 'move error', error);
             });
     })
 
@@ -350,7 +315,6 @@ app.get('/list/*', AuthRequired, (req, res) => {
     })
     .get('/test-auth', AuthRequired, (req, res) => {
         res.status(200).send('I\'m authenticated as ' + req.session.user);
-
     });
 
 /*
@@ -368,10 +332,10 @@ app
          * The progress and completion are not used, so are set to sensible dummy values.
          */
         var ujs = serviceApiClientFactory.make({
-            name: 'UserAndJobState',
-            url: config.services.user_job_state.url,
-            token: req.session.token
-        }),
+                name: 'UserAndJobState',
+                url: config.services.user_job_state.url,
+                token: req.session.token
+            }),
             jobStatus = req.body.narrativeObjectId,
             jobDescription = req.body.jobIds.join(','),
             progress = {ptype: 'percent'},
@@ -382,7 +346,7 @@ app
                 res.status(200).send({result: results});
             })
             .catch(function (err) {
-                utils.log('ERROR', 'Error creating import job', {error: err});
+                writeLog('ERROR', 'Error creating import job', {error: err});
                 res.status(500).send({error: err});
             });
     })
@@ -400,7 +364,7 @@ app
                 res.status(200).send({result: results});
             })
             .catch(function (err) {
-                utils.log('ERROR', 'Error listing import jobs', {error: err});
+                writeLog('ERROR', 'Error listing import jobs', {error: err});
                 res.status(500).send({error: err});
             });
     })
@@ -418,7 +382,7 @@ app
                 res.status(200).send({result: results});
             })
             .catch(function (err) {
-                utils.log('ERROR', 'Error getting import job info', {error: err});
+                writeLog('ERROR', 'Error getting import job info', {error: err});
                 res.status(500).send({error: err});
             });
 
@@ -429,30 +393,28 @@ app
          * user may remove an import job from their import listing panel.
          */
         var ujs = serviceApiClientFactory.make({
-            name: 'UserAndJobState',
-            url: config.services.user_job_state.url,
-            token: req.session.token
-        }),
+                name: 'UserAndJobState',
+                url: config.services.user_job_state.url,
+                token: req.session.token
+            }),
             // for for now
             jobIdToDelete = req.params.jobid;
 
         ujs.rpcRequest('force_delete_job', [serviceToken, jobIdToDelete])
             .then(function (results) {
-                // log('deleted import job', {results: results);
+                // writeLog('deleted import job', {results: results);
                 res.status(200).send({result: true});
             })
             .catch(function (err) {
-                utils.log('ERROR', 'error deleting import job', {error: err});
+                writeLog('ERROR', 'error deleting import job', {error: err});
                 res.status(500).send({error: err});
             });
     });
-
-
 
 
 var server = http.listen(3000, () => {
     var host = server.address().address;
     var port = server.address().port;
 
-    utils.log('INFO', `Service listening at http://${host}:${port}`);
+    writeLog('INFO', `Service listening at http://${host}:${port}`);
 });

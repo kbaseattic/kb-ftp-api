@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "commander": "^2.9.0",
-    "gulp": "^3.9.0"
+    "gulp": "^3.9.0",
+    "node-mocks-http": "^1.6.5"
   }
 }
