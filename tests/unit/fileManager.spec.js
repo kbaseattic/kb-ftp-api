@@ -175,7 +175,7 @@ describe('Test fileManager module', () => {
             fs.unlink(endPath);
         }).catch((err) => {
             // on error, try to delete both
-            console.error(err);
+            fail(err);
             fs.unlink(startPath);
             fs.unlink(endPath);
         }).finally(() => {
@@ -216,6 +216,37 @@ describe('Test fileManager module', () => {
             expect(results.length).toBe(0);
             done();
         });
+    });
+
+    it('deleteFile should delete a given file', (done) => {
+        let filePath = pathUtil.join(testPath, 'delete_me_1.txt');
+        fs.writeFile(filePath, 'to be deleted!');
+
+        fileManager.deleteFile(filePath)
+            .then((result) => {
+                expect(result.deleted).toBe(true);
+            })
+            .catch((err) => {
+                fs.unlink(filePath);
+                fail(err);
+            })
+            .finally(() => {
+                done();
+            });
+    });
+
+    it('deleteFile should return a sensible error if a file doesn\'t exist', (done) => {
+        let filePath = 'not/a/file';
+        fileManager.deleteFile(filePath)
+            .then((result) => {
+                fail('should not have made it here!');
+            })
+            .catch((err) => {
+                expect(err.error).toBeDefined();
+            })
+            .finally(() => {
+                done();
+            });
     });
 
 });

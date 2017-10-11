@@ -24,6 +24,7 @@ const app = require('express')(),
 var env = require('./config/env.json'),
     config = require('./config/config-' + env.deployment + '.json'),
     AuthRequired = require('./lib/middlewares/auth')(config),
+    SanitizePathInputs = require('./lib/middlewares/sanitizePathInputs'),
     serviceApiClientFactory = require('./lib/serviceApiClient'),
     writeLog = require('./lib/utils/log'),
     fileManager = require('./lib/fileManager');
@@ -90,8 +91,11 @@ app.use((req, res, next) => {
  * Given a username and a requested path, ensure that the username matches
  * the username component of the path.
  * returns the requested home and the path with user's home in path
+ * if isFile === true, returns as a path to a file, not as a complete path
+ * (leaves the trailing / off the end)
  */
-function securePath(username, path) {
+function securePath(username, path, isFile) {
+    path = pathUtil.normalize(path);
     let pathList = path.split('/').filter((s) => {
         return s.length === 0 ? false : true;
     });
@@ -107,11 +111,14 @@ function securePath(username, path) {
     // why not just take a path without user originally, instead of swapping and
     // later  matching the
     // authenticated user and the path user (later)/
-    let allowedPath = ['', username].concat(pathList).concat('').join('/');
+    let allowedPath = ['', username].concat(pathList);
+    if (!isFile) {
+        allowedPath = allowedPath.concat('');
+    }
 
     return {
         requestedHome: home,
-        path: allowedPath
+        path: allowedPath.join('/')
     };
 }
 
@@ -166,7 +173,7 @@ function addGlobusIdFile(homeDir, globusIds) {
  *       }
  *     ]
  */
-app.get('/list/*', AuthRequired, (req, res) => {
+app.get('/list/*', AuthRequired, SanitizePathInputs, (req, res) => {
     const user = req.session.user,
         fileListOptions = req.query,
         requestedPath = req.params[0],
@@ -181,8 +188,8 @@ app.get('/list/*', AuthRequired, (req, res) => {
 
     const rootDir = config.ftpRoot,
         path = securedReq.path,
-        fullPath = rootDir + path,
-        userDir = [rootDir, user].join('/');
+        fullPath = pathUtil.join(rootDir, path),
+        userDir = pathUtil.join(rootDir, user);
 
     fileManager.fileExists(userDir)
         .then(function (exists) {
@@ -407,6 +414,41 @@ app
             })
             .catch(function (err) {
                 writeLog('ERROR', 'error deleting import job', {error: err});
+                res.status(500).send({error: err});
+            });
+    })
+    .delete('/file/*', AuthRequired, SanitizePathInputs, (req, res) => {
+        /**
+         * Deletes the given file, the path to which is denoted by the whole
+         * input. This path is relative to the user's root. So, for user
+         * kbase, if they want to delete some file "my_file.txt" in a folder "foo",
+         * the param should be "foo/my_file.txt", which gets translated to
+         * /dataroot/kbase/foo/my_file.txt
+         *
+         * Only FILES are accepted here. Go elsewhere to delete directories.
+         */
+        const user = req.session.user,
+            requestedPath = req.params[0];
+
+        try {
+            var securedReq = securePath(user, requestedPath, true);
+        } catch (ex) {
+            res.status(403).send({error: ex.message});
+            return;
+        }
+
+        const rootDir = config.ftpRoot,
+            path = securedReq.path,
+            fullPath = pathUtil.join(rootDir, path);
+
+        writeLog('INFO', 'trying to delete ' + fullPath);
+        fileManager.deleteFile(fullPath)
+            .then((results) => {
+                writeLog('INFO', 'File deleted', {results: results});
+                res.status(200).send({result: true});
+            })
+            .catch((err) => {
+                writeLog('ERROR', 'Error deleting user file', {error: err, path: fullPath});
                 res.status(500).send({error: err});
             });
     });
