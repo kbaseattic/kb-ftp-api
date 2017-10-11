@@ -1,5 +1,5 @@
-/*global process*/
-/*eslint white:true,node:true,single:true,multivar:true,es6:true*/
+/*global process */
+/*eslint white:true,node:true,single:true,multivar:true,es6:true */
 
 var fileManager = require('../../lib/fileManager'),
     pathUtil = require('path'),
