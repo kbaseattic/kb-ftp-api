@@ -1,43 +1,37 @@
 /*global process*/
+/*eslint es6:true*/
 /*jslint white:true,node:true,single:true,multivar:true,es6:true*/
 // #!/usr/bin/env node
 'use strict';
 
 // External dependencies
-var app = require('express')(),
+const app = require('express')(),
     multer = require('multer'),
     http = require('http').Server(app),
     cors = require('cors'),
     bodyParser = require('body-parser'),
-    request = require('request'),
     extend = require('util')._extend,
     cliOptions = require('commander'),
     Promise = require('bluebird'),
     fs = Promise.promisifyAll(require('fs')),
-    pathUtil = require('path'),
-    // execSync = require('child_process').execSync,
-    Promise = require('promise'),
-    when = require('promised-io/promise').when;
+    pathUtil = require('path');
 
-// Internal deps
-var validateToken = require('./lib/validateToken.js'),
-    serviceApiClientFactory = require('./lib/serviceApiClient'),
-    transferClient = require('./lib/globusTransfer'),
-    utils = require('./lib/utils');
-
-
-cliOptions.version('0.1.0')
-    .option('-d, --dev', 'Developer mode; this option attempts to use a token in the file: dev-user-token')
-    .parse(process.argv);
-
-// Configuration
-/*
+/** Internal dependnecies
  * The "env" config file stores volative configuration. It should be created
  * per-deployment. E.g. it switches to one of the "config-ENV.json" files
  * which have per-deployment configuration.
  */
-var env = require('./config/env.json');
-var config = require('./config/config-' + env.deployment + '.json');
+var env = require('./config/env.json'),
+    config = require('./config/config-' + env.deployment + '.json'),
+    AuthRequired = require('./lib/middlewares/auth')(config),
+    ValidatePathInputs = require('./lib/middlewares/validatePathInputs'),
+    serviceApiClientFactory = require('./lib/serviceApiClient'),
+    writeLog = require('./lib/utils/log'),
+    fileManager = require('./lib/fileManager');
+
+cliOptions.version('0.1.0')
+    .option('-d, --dev', 'Developer mode; this option attempts to use a token in the file: dev-user-token')
+    .parse(process.argv);
 
 // Get the bulkio service token. This token must be set at deployment time
 // via the usage of the script 'get-bulkio-token.js'.
@@ -56,7 +50,7 @@ app.use(cors())
 // otherwise, pass on token for all routes, if there is one
 if (cliOptions.dev) {
     let token = fs.readFileSync('dev-user-token', 'utf8').trim();
-    console.log('\n\x1b[36m' + 'using development token:' + '\x1b[0m', token, '\n');
+    writeLog('\n\x1b[36m' + 'using development token:' + '\x1b[0m', token, '\n');
 
     app.all('/', (req, res, next) => {
         req.headers = {"Authorization": token};
@@ -68,14 +62,24 @@ if (cliOptions.dev) {
 }
 
 
-// handle desination of uploads. The "multer" package provides for
+// Handle destination of uploads. The "multer" package provides for
 // multipart transfers.
 let storage = multer.diskStorage({
     destination: (req, file, cb) => {
+        /* TODO: CRITICAL:
+         * from docs:
+         * "Note that req.body might not have been fully populated yet. It depends on
+         * the order that the client transmits fields and files to the server."
+         *
+         * Also, any exceptions being thrown at this point go back to the router,
+         * which can crash the server. So a bad request can take down the server.
+         * We should probably change that.
+         */
+
         // if multiple files, take path of first
         let reqPath = req.body.destPath;
         let path = reqPath instanceof Array ? reqPath[0] : reqPath;
-        let securedReq = securePath(req.session.user, path);
+        var securedReq = securePath(req.session.user, path);
 
         file.reqPath = securedReq.path + file.originalname;
         file.serverPath = config.ftpRoot + securedReq.path;
@@ -84,69 +88,31 @@ let storage = multer.diskStorage({
     filename: (req, file, cb) => {
         // save file to <path>.part first, and then move to <path>
         cb(null, file.originalname + '.part');
-    }
+    },
 });
 
 // Configure Logging
 app.use((req, res, next) => {
-    utils.log('INFO', `${req.method} ${req.url}`);
+    writeLog('INFO', `${req.method} ${req.url}`);
     next();
 });
-
-/*
- * Since fs.exists is deprecated, this gives us an equivalent async
- * method.
- */
-function fileExists(path) {
-    return fs.accessAsync(path)
-        .then(() => {
-            return true;
-        })
-        .catch((err) => {
-            if (err.code === 'ENOENT') {
-                return false;
-            }
-            throw err;
-        });
-}
-
-function AuthRequired(req, res, next) {
-    // if no token at all, return 401
-    if (!('authorization' in req.headers)) {
-        res.status(401).send({error: 'Auth is required!'});
-        return;
-    }
-    validateToken(config.services.auth.url, req.headers.authorization)
-    .then(sessionObj => {
-        if (!sessionObj) {
-            res.status(401).send({error: 'Invalid token!'});
-            return;
-        }
-
-        // Pass user id along
-        req.session = sessionObj;
-
-        // safe to move along.
-        next();
-    }).catch(error => {
-        res.status(500).send({error: 'Unable to validate authentication credentials'});
-        return;
-    });
-}
 
 /*
  * Given a username and a requested path, ensure that the username matches
  * the username component of the path.
  * returns the requested home and the path with user's home in path
-*/
-function securePath(username, path) {
-    let pathList = path.split('/').filter( (s) => {
+ * if isFile === true, returns as a path to a file, not as a path to a directory
+ * (leaves the trailing / off the end)
+ */
+function securePath(username, path, isFile) {
+    path = pathUtil.normalize(path);
+    let pathList = path.split('/').filter((s) => {
         return s.length === 0 ? false : true;
     });
     let home = pathList.shift();
 
     if (home !== username) {
-        utils.log('ERROR', 'Username does not match path prefix', {username: username, path: path, home: home});
+        writeLog('ERROR', 'Username does not match path prefix', {username: username, path: path, home: home});
         throw new Error('User (' + username + ')' +
             ' does not have permission to access: ' + path + '(' + home + ')');
     }
@@ -155,29 +121,17 @@ function securePath(username, path) {
     // why not just take a path without user originally, instead of swapping and
     // later  matching the
     // authenticated user and the path user (later)/
-    let allowedPath = ['', username].concat(pathList).concat('').join('/');
+    let allowedPath = ['', username].concat(pathList);
+    if (!isFile) {
+        allowedPath = allowedPath.concat('');
+    }
 
     return {
         requestedHome: home,
-        path: allowedPath
+        path: allowedPath.join('/')
     };
 }
 
-/*
- * Async wrapping of move ...
- * TODO: this should just be using renameAsync, since we've alreay wrapped
- * fs in bluebird.
- */
-function move(oldPath, newPath) {
-    return new Promise((resolve, reject) => {
-        fs.rename(oldPath, newPath, function (err) {
-            if (err)
-                reject('could not move .part file; ' + oldPath + ' => ' + newPath);
-            else
-                resolve();
-        });
-    });
-}
 
 /*
  * Creates a file called .globus_id with a single token = the globus user id.
@@ -190,18 +144,18 @@ function addGlobusIdFile(homeDir, globusIds) {
     if (!globusIds || globusIds.length === 0) {
         return
     }
-    const idFilePath = homeDir + '/.globus_id'
+    const idFilePath = homeDir + '/.globus_id';
     // if file exists, return silently
-    return fileExists(idFilePath)
+    return fileManager.fileExists(idFilePath)
         .then(exists => {
             if (!exists) {
-                return fs.writeFile(idFilePath, globusIds.join('\n'))
+                return fs.writeFile(idFilePath, globusIds.join('\n'));
             }
         })
         .catch(error => {
-            utils.log('ERROR', 'Error writing globus id file', {error: err})
-            res.status(500).send({error: err})
-        })
+            writeLog('ERROR', 'Error writing globus id file', {error: err});
+            res.status(500).send({error: err});
+        });
 }
 
 /**
@@ -209,7 +163,7 @@ function addGlobusIdFile(homeDir, globusIds) {
  * @apiName list
  *
  * @apiParam {string} path path to directory
- * @apiParam {string} ?type=(folders|files) only fetch folders or files
+ * @apiParam {string} ?type=(folder|file) only fetch folders or files
  *
  * @apiSampleRequest /list/my/genomes/
  *
@@ -229,7 +183,7 @@ function addGlobusIdFile(homeDir, globusIds) {
  *       }
  *     ]
  */
-app.get('/list/*', AuthRequired, (req, res) => {
+app.get('/list/*', AuthRequired, ValidatePathInputs, (req, res) => {
     const user = req.session.user,
         fileListOptions = req.query,
         requestedPath = req.params[0],
@@ -244,10 +198,10 @@ app.get('/list/*', AuthRequired, (req, res) => {
 
     const rootDir = config.ftpRoot,
         path = securedReq.path,
-        fullPath = rootDir + path,
-        userDir = [rootDir, user].join('/');
+        fullPath = pathUtil.join(rootDir, path),
+        userDir = pathUtil.join(rootDir, user);
 
-    fileExists(userDir)
+    fileManager.fileExists(userDir)
         .then(function (exists) {
             /*
              * If a directory does not exist for this user,
@@ -262,62 +216,51 @@ app.get('/list/*', AuthRequired, (req, res) => {
             /*
              * Write the globus id file if it doesn't exist already.
              */
-            return addGlobusIdFile(userDir, globusIds)
+            return addGlobusIdFile(userDir, globusIds);
         })
         .then(function () {
             /*
              * Return a list of the file contents. Note that there is some
              * filtering here -- the request may ask for files or folders.
-             *
              */
-            return fs.readdirAsync(fullPath)
-                .then(function (files) {
-                    /*
-                     * Note that we use map + filter pattern
-                     */
-                    return files.map((file) => {
-                        let filePath = pathUtil.join(fullPath, file),
-                            stats = fs.statSync(filePath),
-                            isDir = stats.isDirectory();
-
-                        if (fileListOptions.type === 'file' && isDir) {
-                            return;
-                        }
-                        if (fileListOptions.type === 'folder' && !isDir) {
-                            return;
-                        }
-                        if (file === '.globus_id') {
-                            return;
-                        }
-
-                        return {
-                            name: file,
-                            path: path + file,
-                            mtime: stats.mtime.getTime(),
-                            size: stats.size,
-                            isFolder: isDir ? true : false
-                        };
-                    })
-                        .filter((fileObj) => {
-                            if (!fileObj) {
-                                return false;
-                            }
-                            return true;
-                        });
-                });
+            return fileManager.getFiles(fullPath, fileListOptions);
         })
         .then(function (files) {
             res.send(files);
         })
         .catch(function (err) {
-            utils.log('ERROR', 'Error listing directory contents', {error: err});
+            writeLog('ERROR', 'Error listing directory contents', {error: err});
             res.status(500).send({error: err});
         });
 })
+    .get('/search/*', AuthRequired, (req, res) => {
+        const user = req.session.user,
+              query = req.params[0],
+              rootDir = config.ftpRoot,
+              userDir = pathUtil.join(rootDir, user);
 
+        fileManager.fileExists(userDir)
+            .then(exists => {
+                if (!exists) {
+                    throw new Error({
+                        code: 'ENOENT',
+                        error: 'no such file or directory to search from',
+                        path: userDir
+                    });
+                }
+                return fileManager.search(userDir, query, false);
+            })
+            .then(results => {
+                res.send(results);
+            })
+            .catch(err => {
+                writeLog('ERROR', 'Error searching user directory', {error: err});
+                res.status(500).send({error: err});
+            });
+    })
 
     /**
-     * @api {get} /upload post endpoint to upload data
+     * @api {post} /upload post endpoint to upload data
      * @apiName upload
      *
      * @apiSampleRequest /upload/
@@ -337,12 +280,12 @@ app.get('/list/*', AuthRequired, (req, res) => {
      "name": "Sandbox_Experiments-1.tsv"
      }]
      */
-    .post("/upload", AuthRequired, multer({storage: storage}).array('uploads', 12),
+    .post("/upload", AuthRequired, multer({storage: storage, onError: (err) => { console.error('GOT AN ERROR'); res.status(500).send; }}).array('uploads', 12),
         (req, res) => {
         let user = req.session.user,
             globusIds = req.session.globusUserIds,
-            proms = [],
             log = [],
+            proms = [],
             response = [];
 
         const rootDir = config.ftpRoot,
@@ -357,19 +300,18 @@ app.get('/list/*', AuthRequired, (req, res) => {
                 mtime: Date.now()
             });
 
-            proms.push(move(f.path, f.serverPath + f.originalname));
+            proms.push(fileManager.move(f.path, f.serverPath + f.originalname));
         });
         proms.push(addGlobusIdFile(userDir, globusIds));
 
-
         Promise.all(proms)
             .then(() => {
-                utils.log('INFO', 'user (' + user + ') uploaded:\n', log.join('\n'));
+                writeLog('INFO', 'user (' + user + ') uploaded:\n', log.join('\n'));
                 res.send(response);
             })
             .catch((error) => {
                 // TODO: this error should propagate!
-                utils.log('ERROR', 'move error', error);
+                writeLog('ERROR', 'move error', error);
             });
     })
 
@@ -390,7 +332,6 @@ app.get('/list/*', AuthRequired, (req, res) => {
     })
     .get('/test-auth', AuthRequired, (req, res) => {
         res.status(200).send('I\'m authenticated as ' + req.session.user);
-
     });
 
 /*
@@ -408,10 +349,10 @@ app
          * The progress and completion are not used, so are set to sensible dummy values.
          */
         var ujs = serviceApiClientFactory.make({
-            name: 'UserAndJobState',
-            url: config.services.user_job_state.url,
-            token: req.session.token
-        }),
+                name: 'UserAndJobState',
+                url: config.services.user_job_state.url,
+                token: req.session.token
+            }),
             jobStatus = req.body.narrativeObjectId,
             jobDescription = req.body.jobIds.join(','),
             progress = {ptype: 'percent'},
@@ -422,7 +363,7 @@ app
                 res.status(200).send({result: results});
             })
             .catch(function (err) {
-                utils.log('ERROR', 'Error creating import job', {error: err});
+                writeLog('ERROR', 'Error creating import job', {error: err});
                 res.status(500).send({error: err});
             });
     })
@@ -440,7 +381,7 @@ app
                 res.status(200).send({result: results});
             })
             .catch(function (err) {
-                utils.log('ERROR', 'Error listing import jobs', {error: err});
+                writeLog('ERROR', 'Error listing import jobs', {error: err});
                 res.status(500).send({error: err});
             });
     })
@@ -458,7 +399,7 @@ app
                 res.status(200).send({result: results});
             })
             .catch(function (err) {
-                utils.log('ERROR', 'Error getting import job info', {error: err});
+                writeLog('ERROR', 'Error getting import job info', {error: err});
                 res.status(500).send({error: err});
             });
 
@@ -469,30 +410,63 @@ app
          * user may remove an import job from their import listing panel.
          */
         var ujs = serviceApiClientFactory.make({
-            name: 'UserAndJobState',
-            url: config.services.user_job_state.url,
-            token: req.session.token
-        }),
+                name: 'UserAndJobState',
+                url: config.services.user_job_state.url,
+                token: req.session.token
+            }),
             // for for now
             jobIdToDelete = req.params.jobid;
 
         ujs.rpcRequest('force_delete_job', [serviceToken, jobIdToDelete])
             .then(function (results) {
-                // log('deleted import job', {results: results);
+                // writeLog('deleted import job', {results: results);
                 res.status(200).send({result: true});
             })
             .catch(function (err) {
-                utils.log('ERROR', 'error deleting import job', {error: err});
+                writeLog('ERROR', 'error deleting import job', {error: err});
+                res.status(500).send({error: err});
+            });
+    })
+    .delete('/file/*', AuthRequired, ValidatePathInputs, (req, res) => {
+        /**
+         * Deletes the given file, the path to which is denoted by the whole
+         * input. This path is relative to the user's root. So, for user
+         * kbase, if they want to delete some file "my_file.txt" in a folder "foo",
+         * the param should be "foo/my_file.txt", which gets translated to
+         * /dataroot/kbase/foo/my_file.txt
+         *
+         * Only FILES are accepted here. Go elsewhere to delete directories.
+         */
+        const user = req.session.user,
+            requestedPath = req.params[0];
+
+        try {
+            var securedReq = securePath(user, requestedPath, true);
+        } catch (ex) {
+            res.status(403).send({error: ex.message});
+            return;
+        }
+
+        const rootDir = config.ftpRoot,
+            path = securedReq.path,
+            fullPath = pathUtil.join(rootDir, path);
+
+        writeLog('INFO', 'trying to delete ' + fullPath);
+        fileManager.deleteFile(fullPath)
+            .then((results) => {
+                writeLog('INFO', 'File deleted', {results: results});
+                res.status(200).send({result: true});
+            })
+            .catch((err) => {
+                writeLog('ERROR', 'Error deleting user file', {error: err, path: fullPath});
                 res.status(500).send({error: err});
             });
     });
-
-
 
 
 var server = http.listen(3000, () => {
     var host = server.address().address;
     var port = server.address().port;
 
-    utils.log('INFO', `Service listening at http://${host}:${port}`);
+    writeLog('INFO', `Service listening at http://${host}:${port}`);
 });

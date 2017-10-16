@@ -93,8 +93,10 @@ forever start -l /logs/server.log --pidFile /tmp/a -a server.js
 ## Author(s)
 
 Neal Conrad <nconrad@anl.gov>
+Erik Pearson <eapearson@lbl.gov>
+Bill Riehl <wjriehl@lbl.gov>
 
 
 ## License
 
-Released under [the MIT license](https://github.com/nconrad/kb-ftp-api/blob/master/LICENSE).
+Released under [the KBase license](https://github.com/kbase/kb-ftp-api/blob/master/LICENSE).
