@@ -1,4 +1,4 @@
-const sanitizePathInputs = require('../../lib/middlewares/sanitizePathInputs'),
+const validatePathInputs = require('../../lib/middlewares/validatePathInputs'),
       httpMocks = require('node-mocks-http');
 
 describe('Test SanitizePathInputs middleware', () => {
@@ -9,7 +9,7 @@ describe('Test SanitizePathInputs middleware', () => {
         let req = httpMocks.createRequest({
             params: ['foo/bar']
         });
-        sanitizePathInputs(req, genericResponse, () => {
+        validatePathInputs(req, genericResponse, () => {
             done();
         });
     });
@@ -18,7 +18,7 @@ describe('Test SanitizePathInputs middleware', () => {
         let req = httpMocks.createRequest({
             params: ['foo/../bar/../baz']
         });
-        sanitizePathInputs(req, genericResponse, () => {
+        validatePathInputs(req, genericResponse, () => {
             done();
         });
     });
@@ -27,7 +27,7 @@ describe('Test SanitizePathInputs middleware', () => {
         let req = httpMocks.createRequest({
             params: ['foo/../../../../bar']
         });
-        sanitizePathInputs(req, genericResponse, () => {
+        validatePathInputs(req, genericResponse, () => {
             done();
         });
     })

@@ -202,6 +202,25 @@ describe('KBase FTP POST Requests', () => {
                 done();
             });
         });
+
+        it('Should fail to upload something not to the user\'s directory', (done) => {
+            var formData = {
+                destPath: '/' + testUser + '../../',
+                username: testUser,
+                uploads: [
+                    fs.createReadStream('./tests/data/test_data_file.txt')
+                ]
+            };
+            var postData = {
+                url: url('/upload'),
+                headers: validAuthHeader,
+                formData: formData
+            };
+            r.post(postData, (error, response, body) => {
+                expect(response.statusCode).toBe(403);
+                done();
+            });
+        });
     });
 
     describe('POST /import-jobs', () => {

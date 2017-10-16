@@ -24,7 +24,7 @@ const app = require('express')(),
 var env = require('./config/env.json'),
     config = require('./config/config-' + env.deployment + '.json'),
     AuthRequired = require('./lib/middlewares/auth')(config),
-    SanitizePathInputs = require('./lib/middlewares/sanitizePathInputs'),
+    ValidatePathInputs = require('./lib/middlewares/validatePathInputs'),
     serviceApiClientFactory = require('./lib/serviceApiClient'),
     writeLog = require('./lib/utils/log'),
     fileManager = require('./lib/fileManager');
@@ -66,10 +66,20 @@ if (cliOptions.dev) {
 // multipart transfers.
 let storage = multer.diskStorage({
     destination: (req, file, cb) => {
+        /* TODO: CRITICAL:
+         * from docs:
+         * "Note that req.body might not have been fully populated yet. It depends on
+         * the order that the client transmits fields and files to the server."
+         *
+         * Also, any exceptions being thrown at this point go back to the router,
+         * which can crash the server. So a bad request can take down the server.
+         * We should probably change that.
+         */
+
         // if multiple files, take path of first
         let reqPath = req.body.destPath;
         let path = reqPath instanceof Array ? reqPath[0] : reqPath;
-        let securedReq = securePath(req.session.user, path);
+        var securedReq = securePath(req.session.user, path);
 
         file.reqPath = securedReq.path + file.originalname;
         file.serverPath = config.ftpRoot + securedReq.path;
@@ -78,7 +88,7 @@ let storage = multer.diskStorage({
     filename: (req, file, cb) => {
         // save file to <path>.part first, and then move to <path>
         cb(null, file.originalname + '.part');
-    }
+    },
 });
 
 // Configure Logging
@@ -91,7 +101,7 @@ app.use((req, res, next) => {
  * Given a username and a requested path, ensure that the username matches
  * the username component of the path.
  * returns the requested home and the path with user's home in path
- * if isFile === true, returns as a path to a file, not as a complete path
+ * if isFile === true, returns as a path to a file, not as a path to a directory
  * (leaves the trailing / off the end)
  */
 function securePath(username, path, isFile) {
@@ -173,7 +183,7 @@ function addGlobusIdFile(homeDir, globusIds) {
  *       }
  *     ]
  */
-app.get('/list/*', AuthRequired, SanitizePathInputs, (req, res) => {
+app.get('/list/*', AuthRequired, ValidatePathInputs, (req, res) => {
     const user = req.session.user,
         fileListOptions = req.query,
         requestedPath = req.params[0],
@@ -270,7 +280,7 @@ app.get('/list/*', AuthRequired, SanitizePathInputs, (req, res) => {
      "name": "Sandbox_Experiments-1.tsv"
      }]
      */
-    .post("/upload", AuthRequired, multer({storage: storage}).array('uploads', 12),
+    .post("/upload", AuthRequired, multer({storage: storage, onError: (err) => { console.error('GOT AN ERROR'); res.status(500).send; }}).array('uploads', 12),
         (req, res) => {
         let user = req.session.user,
             globusIds = req.session.globusUserIds,
@@ -417,7 +427,7 @@ app
                 res.status(500).send({error: err});
             });
     })
-    .delete('/file/*', AuthRequired, SanitizePathInputs, (req, res) => {
+    .delete('/file/*', AuthRequired, ValidatePathInputs, (req, res) => {
         /**
          * Deletes the given file, the path to which is denoted by the whole
          * input. This path is relative to the user's root. So, for user
