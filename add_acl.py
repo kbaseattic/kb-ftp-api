@@ -7,6 +7,9 @@ import globus_sdk
 import traceback
 import argparse
 import os
+import time
+
+time.sleep(5)
 
 parser = argparse.ArgumentParser(description='kbase share creator')
 parser.add_argument('--share-dir', dest='sharedDir',
