@@ -80,5 +80,6 @@ print(authorizer.access_token)
 parser.set('general', 'auth_token', authorizer.access_token)
 
 # Writing our configuration file 
-with open('/root/.globus.cfg', 'wb') as configfile:
-    parser.write(configfile)
+if authorizer.access_token and len(authorizer.access_token) > 0:
+    with open('/root/.globus.cfg', 'wb') as configfile:
+        parser.write(configfile)
